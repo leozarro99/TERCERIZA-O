@@ -1,1653 +1,911 @@
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gerenciamento de Placas e Filiais (Supabase)</title>
-    <!-- Tailwind CSS CDN -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Lucide Icons CDN (para ícones) -->
-    <script src="https://unpkg.com/lucide@latest"></script>
-    <!-- Supabase JS CDN -->
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <style>
-        body {
-            font-family: "Inter", sans-serif;
-        }
-        /* Animação para mensagens */
-        @keyframes fadeInDown {
-            from {
-                opacity: 0;
-                transform: translateY(-20px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-        .animate-fade-in-down {
-            animation: fadeInDown 0.3s ease-out forwards;
-        }
-        /* Estilo para a tabela em telas menores */
-        @media (max-width: 768px) {
-            table, thead, tbody, th, td, tr {
-                display: block;
-            }
-            thead tr {
-                position: absolute;
-                top: -9999px;
-                left: -9999px;
-            }
-            tr {
-                border: 1px solid #e2e8f0; /* border-gray-200 */
-                margin-bottom: 0.75rem; /* mb-3 */
-                border-radius: 0.5rem; /* rounded-lg */
-                overflow: hidden;
-            }
-            td {
-                border-bottom: 1px solid #e2e8f0;
-                position: relative;
-                padding-left: 50%;
-                text-align: right;
-            }
-            td:before {
-                position: absolute;
-                top: 0;
-                left: 6px;
-                width: 45%;
-                padding-right: 10px;
-                white-space: nowrap;
-                text-align: left;
-                font-weight: bold;
-                /* Adicione o conteúdo para cada coluna aqui */
-                /* Exemplo: content: attr(data-label); */
-            }
-            td:nth-of-type(1):before { content: "Placa"; }
-            td:nth-of-type(2):before { content: "Filial Atual"; }
-            td:nth-of-type(3):before { content: "Desde"; }
-            td:nth-of-type(4):before { content: "Histórico"; }
+import React, { useState, useEffect, createContext, useContext, useCallback } from 'react';
+import { createClient } from '@supabase/supabase-js';
 
-            td:last-child {
-                border-bottom: 0;
-            }
-        }
-    </style>
-</head>
-<body class="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 p-4 sm:p-6 flex flex-col items-center justify-center">
+// --- Configuração Global do Supabase ---
+// Estes são os pontos de conexão para o seu projeto Supabase.
+// A chave 'anon' é segura para ser exposta no frontend.
+const SUPABASE_URL = 'https://jtikvjomzduvjrrrsfeg.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp0aWt2am9 DDUvjrrrsfegIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTMxMjU3NjcsImV4cCI6MjA2ODcwMTc2N30.2SCuJprMLJROxV6r6z1xKaVnnvy-q0Edwb0DrmcNeEg';
 
-    <div class="w-full max-w-4xl bg-white shadow-xl rounded-2xl p-6 sm:p-10 mb-8 transition-all duration-300 ease-in-out transform hover:scale-[1.005]">
-        <h1 class="text-4xl sm:text-5xl font-extrabold text-gray-900 mb-8 text-center bg-clip-text text-transparent bg-gradient-to-r from-blue-700 to-indigo-800">
-            Gerenciamento de Placas e Filiais
-        </h1>
+// Inicializa o cliente Supabase uma única vez.
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-        <!-- Seção de Autenticação Personalizada -->
-        <div id="auth-section" class="flex flex-col items-center justify-center gap-6 mb-8">
-            <h2 class="text-3xl font-bold text-gray-800 text-center">Acessar o Sistema</h2>
-            <p class="text-gray-600 text-center text-lg leading-relaxed max-w-2xl">
-                Faça login para continuar.
-            </p>
-            
-            <!-- Formulário de Login Personalizado -->
-            <form id="app-login-form" class="w-full max-w-sm p-6 bg-gray-50 rounded-lg shadow-inner" style="display: block;">
-                <h3 class="text-2xl font-semibold text-gray-800 mb-4 text-center">Login</h3>
-                <div class="mb-4">
-                    <label for="app-login-username-input" class="block text-sm font-medium text-gray-700 mb-2">Usuário (E-mail)</label>
-                    <input
-                        type="email"
-                        id="app-login-username-input"
-                        class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition duration-150 ease-in-out hover:border-blue-400"
-                        placeholder="seu.email@exemplo.com"
-                        required
-                    />
-                </div>
-                <div class="mb-6">
-                    <label for="app-login-password" class="block text-sm font-medium text-gray-700 mb-2">Senha</label>
-                    <input
-                        type="password"
-                        id="app-login-password"
-                        class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition duration-150 ease-in-out hover:border-blue-400"
-                        placeholder="********"
-                        required
-                    />
-                </div>
-                <button type="submit"
-                    class="w-full px-8 py-3 bg-gradient-to-r from-blue-600 to-indigo-700 text-white font-bold rounded-lg shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition duration-300 ease-in-out transform hover:scale-105">
-                    Entrar
-                </button>
-                <div id="app-login-message-display"></div>
-            </form>
-        </div>
+// --- Contexto de Autenticação (AuthContext) ---
+// Este contexto permite que o estado do usuário logado e as funções de autenticação
+// sejam acessados por qualquer componente aninhado, sem a necessidade de "prop drilling".
+const AuthContext = createContext(null);
 
-        <!-- Informação do Usuário Logado e Botão de Sair -->
-        <div id="user-info-bar" class="flex justify-between items-center mb-6 p-3 bg-gray-50 rounded-lg shadow-sm" style="display: none;">
-            <p class="text-gray-700 font-semibold">Usuário: <span id="current-user-display" class="text-blue-700"></span></p>
-            <button id="logout-btn"
-                class="px-4 py-2 bg-red-200 text-red-700 rounded-lg font-semibold hover:bg-red-300 transition-colors duration-200 shadow-sm">
-                Sair
-            </button>
-        </div>
+/**
+ * AuthProvider: Componente que gerencia o estado de autenticação do usuário
+ * e fornece as funções de login/logout para o resto da aplicação.
+ */
+const AuthProvider = ({ children }) => {
+  const [user, setUser] = useState(null); // Armazena os dados do usuário logado
+  const [loading, setLoading] = useState(true); // Indica se a autenticação está carregando
+  const [authError, setAuthError] = useState(null); // Armazena mensagens de erro de autenticação
 
+  // useEffect para simular a verificação inicial de sessão.
+  // Em um ambiente de produção com autenticação Supabase completa,
+  // você usaria `supabase.auth.getSession()` ou `onAuthStateChange`.
+  useEffect(() => {
+    setLoading(false); // Define o carregamento como falso após a inicialização simulada
+  }, []);
 
-        <!-- Seção de Botões de Navegação Inicial -->
-        <div id="initial-buttons-section" class="flex flex-col gap-4 mb-8" style="display: none;">
-            <button id="cadastro-equipamento-btn"
-                class="flex items-center justify-center px-8 py-4 rounded-xl font-bold text-lg shadow-md transition-all duration-300 ease-in-out transform hover:scale-105 bg-gradient-to-r from-blue-600 to-indigo-700 text-white hover:bg-blue-700">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-plus-circle mr-3"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/><path d="M12 8v8"/></svg>
-                CADASTRO DE EQUIPAMENTO
-            </button>
-            <button id="alteracao-filial-btn"
-                class="flex items-center justify-center px-8 py-4 rounded-xl font-bold text-lg shadow-md transition-all duration-300 ease-in-out transform hover:scale-105 bg-gradient-to-r from-blue-600 to-indigo-700 text-white hover:bg-blue-700">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-pencil mr-3"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
-                ALTERAÇÃO DE FILIAL
-            </button>
-            <button id="cadastro-filial-btn"
-                class="flex items-center justify-center px-8 py-4 rounded-xl font-bold text-lg shadow-md transition-all duration-300 ease-in-out transform hover:scale-105 bg-gradient-to-r from-blue-600 to-indigo-700 text-white hover:bg-blue-700">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-building-2 mr-3"><path d="M6 22V7H4V2h10v5h2v15h-2v-5h-2v5h-2v-5h-2v5H8v-5H6v5Zm4 0v-5h2v5h-2Z"/><path d="M18 22V12h-2v10h2Z"/><path d="M22 22V17h-2v5h2Z"/></svg>
-                CADASTRO DE FILIAL
-            </button>
-            <button id="dashboard-btn"
-                class="flex items-center justify-center px-8 py-4 rounded-xl font-bold text-lg shadow-md transition-all duration-300 ease-in-out transform hover:scale-105 bg-gradient-to-r from-blue-600 to-indigo-700 text-white hover:bg-blue-700">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-layout-dashboard mr-3"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
-                DASHBOARD
-            </button>
-            <button id="admin-panel-btn"
-                class="flex items-center justify-center px-8 py-4 rounded-xl font-bold text-lg shadow-md transition-all duration-300 ease-in-out transform hover:scale-105 bg-gradient-to-r from-purple-600 to-pink-700 text-white hover:bg-purple-700" style="display: none;">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-shield mr-3"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-                ADMINISTRAÇÃO
-            </button>
-            <!-- Novo botão para a seção de URL Transformation -->
-            <button id="url-transformation-btn"
-                class="flex items-center justify-center px-8 py-4 rounded-xl font-bold text-lg shadow-md transition-all duration-300 ease-in-out transform hover:scale-105 bg-gradient-to-r from-teal-600 to-cyan-700 text-white hover:bg-teal-700">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-link mr-3"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07L9.5 3.5"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07L14.5 20.5"/></svg>
-                TRANSFORMAÇÃO DE URL
-            </button>
-        </div>
+  /**
+   * Função assíncrona para tentar o login do usuário.
+   * Consulta a tabela 'usuarios' no Supabase para validar as credenciais.
+   * @param {string} email - O email fornecido pelo usuário.
+   * @param {string} password - A senha fornecida pelo usuário.
+   * @returns {Promise<{success: boolean, error?: string}>} Um objeto indicando sucesso ou falha com mensagem de erro.
+   */
+  const login = useCallback(async (email, password) => {
+    setLoading(true);
+    setAuthError(null); // Limpa erros anteriores para uma nova tentativa de login
 
-        <!-- Conteúdo da Seção: CADASTRO DE EQUIPAMENTO -->
-        <div id="cadastro-equipamento-section" class="mt-8 p-6 bg-white rounded-xl shadow-md border border-gray-100 flex flex-col items-center" style="display: none;">
-            <h2 class="text-3xl font-bold text-gray-800 mb-6 text-center">Cadastro de Equipamento</h2>
-            <p class="text-gray-600 text-center mb-8 text-lg leading-relaxed max-w-2xl">
-                Utilize esta seção para registrar novos equipamentos com sua placa, filial e data inicial.
-            </p>
+    try {
+      // Realiza a consulta no Supabase.
+      // ATENÇÃO: Em produção, senhas devem ser hashadas no banco de dados e comparadas com hashes.
+      const { data, error } = await supabase
+        .from('usuarios')
+        .select('*')
+        .eq('email', email)
+        .eq('senha', password)
+        .single(); // Espera um único resultado para as credenciais
 
-            <div class="flex gap-4 mb-6">
-                <button id="toggle-manual-cadastro-btn"
-                    class="px-6 py-2 rounded-lg font-semibold transition-all duration-200 bg-blue-100 text-blue-700 hover:bg-blue-200">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-list-plus mr-2"><path d="M11 12H3"/><path d="M16 6H3"/><path d="M16 18H3"/><path d="M18 9v6"/><path d="M21 12h-6"/></svg>
-                    Cadastro Manual
-                </button>
-                <button id="toggle-bulk-upload-btn"
-                    class="px-6 py-2 rounded-lg font-semibold transition-all duration-200 bg-gray-100 text-gray-700 hover:bg-gray-200">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-upload mr-2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
-                    Upload em Massa
-                </button>
-            </div>
+      if (error && error.code === 'PGRST116') {
+        // 'PGRST116' é o código de erro do PostgREST para "nenhuma linha encontrada",
+        // o que indica que as credenciais não correspondem a nenhum usuário.
+        throw new Error('Credenciais inválidas. Verifique seu email e senha.');
+      } else if (error) {
+        // Captura outros erros que podem ocorrer durante a consulta ao Supabase.
+        throw error;
+      }
 
-            <!-- Formulário de Cadastro Manual -->
-            <form id="cadastro-equipamento-form-manual" class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 w-full max-w-2xl">
-                <div>
-                    <label for="cadastro-equipamento-plate" class="block text-sm font-medium text-gray-700 mb-2">PLACA</label>
-                    <input
-                        type="text"
-                        id="cadastro-equipamento-plate"
-                        class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition duration-150 ease-in-out hover:border-blue-400 uppercase"
-                        placeholder="Ex: ABC1234"
-                        required
-                    />
-                    <div id="plate-suggestions-cadastro" class="absolute z-10 w-full bg-white border border-gray-300 rounded-lg shadow-lg mt-1 max-h-40 overflow-y-auto" style="display: none;"></div>
-                </div>
-                <div>
-                    <label for="cadastro-equipamento-branch" class="block text-sm font-medium text-gray-700 mb-2">FILIAL (Sigla)</label>
-                    <input
-                        type="text"
-                        id="cadastro-equipamento-branch"
-                        class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition duration-150 ease-in-out hover:border-blue-400 uppercase"
-                        placeholder="Ex: IPA"
-                        required
-                    />
-                    <div id="branch-suggestions-cadastro" class="absolute z-10 w-full bg-white border border-gray-300 rounded-lg shadow-lg mt-1 max-h-40 overflow-y-auto" style="display: none;"></div>
-                </div>
-                <div>
-                    <label for="cadastro-equipamento-date" class="block text-sm font-medium text-gray-700 mb-2">DATA</label>
-                    <input
-                        type="date"
-                        id="cadastro-equipamento-date"
-                        class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition duration-150 ease-in-out hover:border-blue-400"
-                        required
-                    />
-                </div>
-                <div class="md:col-span-3 flex justify-center mt-4">
-                    <button type="submit"
-                        class="w-full md:w-auto px-8 py-3 bg-gradient-to-r from-blue-600 to-indigo-700 text-white font-bold rounded-lg shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition duration-300 ease-in-out transform hover:scale-105">
-                        Cadastrar Equipamento
-                    </button>
-                </div>
-            </form>
+      if (data) {
+        setUser(data); // Define o usuário logado no estado
+        return { success: true };
+      }
+      return { success: false, error: 'Credenciais inválidas.' };
 
-            <!-- Formulário de Upload em Massa -->
-            <div id="cadastro-equipamento-form-bulk" class="w-full max-w-2xl" style="display: none;">
-                <label for="bulk-upload-textarea" class="block text-sm font-medium text-gray-700 mb-2">Cole os dados aqui (uma linha por equipamento, separados por TAB: PLACA &lt;tab&gt; FILIAL &lt;tab&gt; DATA)</label>
-                <textarea id="bulk-upload-textarea" rows="10"
-                    class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition duration-150 ease-in-out hover:border-blue-400"
-                    placeholder="Ex:&#10;PLACA	ABC1234	FILIAL	IPA	DATA	15/07/2025&#10;PLACA	XYZ5678	FILIAL	SP	DATA	20/03/2023"></textarea>
-                <div class="flex justify-center mt-4">
-                    <button id="process-bulk-upload-btn"
-                        class="w-full md:w-auto px-8 py-3 bg-gradient-to-r from-green-600 to-emerald-700 text-white font-bold rounded-lg shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition duration-300 ease-in-out transform hover:scale-105">
-                        Processar Upload
-                    </button>
-                </div>
-                <div id="bulk-upload-results-display" class="mt-6 p-4 bg-gray-50 rounded-lg shadow-inner text-sm text-gray-700" style="display: none;">
-                    <!-- Resultados do upload em massa serão exibidos aqui -->
-                    <p class="text-center text-blue-600">Processando... <span id="bulk-upload-progress">0%</span></p>
-                </div>
-            </div>
+    } catch (error) {
+      console.error('Erro no login:', error.message);
+      setAuthError(error.message); // Define a mensagem de erro para exibição na UI
+      return { success: false, error: error.message };
+    } finally {
+      setLoading(false); // Finaliza o estado de carregamento
+    }
+  }, []); // Dependências vazias, pois a função não depende de props ou estados externos
 
-            <div id="cadastro-equipamento-message-display"></div>
-            <button id="cadastro-equipamento-back-btn"
-                class="mt-8 flex items-center px-6 py-2 bg-gray-100 text-gray-600 rounded-lg font-semibold hover:bg-gray-200 transition-colors duration-200 shadow-sm">
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-left mr-2"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
-                Voltar
-            </button>
-        </div>
+  /**
+   * Função para realizar o logout do usuário.
+   * Limpa o estado do usuário e quaisquer erros de autenticação.
+   */
+  const logout = useCallback(() => {
+    setUser(null); // Limpa os dados do usuário
+    setAuthError(null); // Limpa erros
+    // Em uma aplicação real com Supabase Auth, você chamaria `supabase.auth.signOut()` aqui.
+  }, []);
 
-        <!-- Conteúdo da Seção: ALTERAÇÃO DE FILIAL -->
-        <div id="alteracao-filial-section" class="mt-8 p-6 bg-white rounded-xl shadow-md border border-gray-100 flex flex-col items-center" style="display: none;">
-            <h2 class="text-3xl font-bold text-gray-800 mb-6 text-center">Alteração de Filial</h2>
-            <p class="text-gray-600 text-center mb-8 text-lg leading-relaxed max-w-2xl">
-                Atualize a filial de um equipamento existente. A placa deve estar previamente cadastrada.
-            </p>
-            <form id="alteracao-filial-form" class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 w-full max-w-2xl">
-                <div>
-                    <label for="alteracao-filial-plate" class="block text-sm font-medium text-gray-700 mb-2">PLACA</label>
-                    <input
-                        type="text"
-                        id="alteracao-filial-plate"
-                        class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition duration-150 ease-in-out hover:border-blue-400 uppercase"
-                        placeholder="Ex: ABC1234"
-                        required
-                    />
-                    <div id="plate-suggestions-alteracao" class="absolute z-10 w-full bg-white border border-gray-300 rounded-lg shadow-lg mt-1 max-h-40 overflow-y-auto" style="display: none;"></div>
-                </div>
-                <div>
-                    <label for="alteracao-filial-branch" class="block text-sm font-medium text-gray-700 mb-2">NOVA FILIAL (Sigla)</label>
-                    <input
-                        type="text"
-                        id="alteracao-filial-branch"
-                        class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition duration-150 ease-in-out hover:border-blue-400 uppercase"
-                        placeholder="Ex: SP"
-                        required
-                    />
-                    <div id="branch-suggestions-alteracao" class="absolute z-10 w-full bg-white border border-gray-300 rounded-lg shadow-lg mt-1 max-h-40 overflow-y-auto" style="display: none;"></div>
-                </div>
-                <div>
-                    <label for="alteracao-filial-date" class="block text-sm font-medium text-gray-700 mb-2">DATA DA ALTERAÇÃO</label>
-                    <input
-                        type="date"
-                        id="alteracao-filial-date"
-                        class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition duration-150 ease-in-out hover:border-blue-400"
-                        required
-                    />
-                </div>
-                <div class="md:col-span-3 flex justify-center mt-4">
-                    <button type="submit"
-                        class="w-full md:w-auto px-8 py-3 bg-gradient-to-r from-blue-600 to-indigo-700 text-white font-bold rounded-lg shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition duration-300 ease-in-out transform hover:scale-105">
-                        Alterar Filial
-                    </button>
-                </div>
-            </form>
-            <div id="alteracao-filial-message-display"></div>
-            <button id="alteracao-filial-back-btn"
-                class="mt-8 flex items-center px-6 py-2 bg-gray-100 text-gray-600 rounded-lg font-semibold hover:bg-gray-200 transition-colors duration-200 shadow-sm">
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-left mr-2"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
-                Voltar
-            </button>
-        </div>
+  // O valor fornecido pelo contexto, incluindo o usuário, funções e estados de carregamento/erro.
+  const authContextValue = { user, login, logout, loading, authError };
 
-        <!-- Conteúdo da Seção: CADASTRO DE FILIAL -->
-        <div id="cadastro-filial-section" class="mt-8 p-6 bg-white rounded-xl shadow-md border border-gray-100 flex flex-col items-center" style="display: none;">
-            <h2 class="text-3xl font-bold text-gray-800 mb-6 text-center">Cadastro de Filial</h2>
-            <p class="text-gray-600 text-center mb-8 text-lg leading-relaxed max-w-2xl">
-                Registre novas filiais no sistema para que possam ser utilizadas no cadastro e alteração de equipamentos.
-            </p>
-            <form id="cadastro-filial-form" class="grid grid-cols-1 gap-6 mb-8 w-full max-w-md">
-                <div>
-                    <label for="cadastro-filial-name" class="block text-sm font-medium text-gray-700 mb-2">NOME DA FILIAL (Sigla)</label>
-                    <input
-                        type="text"
-                        id="cadastro-filial-name"
-                        class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition duration-150 ease-in-out hover:border-blue-400 uppercase"
-                        placeholder="Ex: ITA"
-                        required
-                    />
-                </div>
-                <div class="flex justify-center mt-4">
-                    <button type="submit"
-                        class="w-full md:w-auto px-8 py-3 bg-gradient-to-r from-blue-600 to-indigo-700 text-white font-bold rounded-lg shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition duration-300 ease-in-out transform hover:scale-105">
-                        Cadastrar Filial
-                    </button>
-                </div>
-            </form>
-            <div id="cadastro-filial-message-display"></div>
-            <button id="cadastro-filial-back-btn"
-                class="mt-8 flex items-center px-6 py-2 bg-gray-100 text-gray-600 rounded-lg font-semibold hover:bg-gray-200 transition-colors duration-200 shadow-sm">
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-left mr-2"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
-                Voltar
-            </button>
-        </div>
+  return (
+    <AuthContext.Provider value={authContextValue}>
+      {children}
+    </AuthContext.Provider>
+  );
+};
 
-        <!-- Conteúdo da Seção: DASHBOARD -->
-        <div id="dashboard-section" class="mt-8 p-6 bg-white rounded-xl shadow-md border border-gray-100 flex flex-col items-center" style="display: none;">
-            <h2 class="text-3xl font-bold text-gray-800 mb-6 text-center">Dashboard de Equipamentos por Filial</h2>
-            <p class="text-gray-600 text-center mb-8 text-lg leading-relaxed max-w-2xl">
-                Selecione uma filial para visualizar a quantidade de equipamentos e suas respectivas placas.
-            </p>
-            <div class="w-full max-w-md mb-8">
-                <label for="dashboard-branch-select" class="block text-sm font-medium text-gray-700 mb-2">SELECIONE A FILIAL</label>
-                <select id="dashboard-branch-select"
-                    class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition duration-150 ease-in-out hover:border-blue-400">
-                    <option value="">-- Selecione uma Filial --</option>
-                    <!-- Opções de filiais serão carregadas aqui pelo JS -->
-                </select>
-            </div>
-            
-            <div id="dashboard-results" class="w-full max-w-2xl bg-gray-50 p-6 rounded-lg shadow-inner text-center" style="display: none;">
-                <h3 class="text-2xl font-semibold text-gray-800 mb-4"><span id="dashboard-filial-name"></span> - <span id="dashboard-equipment-count">0</span> Equipamentos</h3>
-                <ul id="dashboard-equipment-list" class="list-disc list-inside text-gray-700 text-left space-y-1">
-                    <!-- Placas serão listadas aqui -->
-                </ul>
-            </div>
-            <div id="dashboard-message-display"></div>
-            <button id="dashboard-back-btn"
-                class="mt-8 flex items-center px-6 py-2 bg-gray-100 text-gray-600 rounded-lg font-semibold hover:bg-gray-200 transition-colors duration-200 shadow-sm">
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-left mr-2"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
-                Voltar
-            </button>
-        </div>
+/**
+ * useAuth: Hook personalizado para consumir o AuthContext de forma conveniente.
+ * Simplifica o acesso aos dados e funções de autenticação em qualquer componente funcional.
+ */
+const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (!context) {
+    // Garante que o hook seja usado dentro de um AuthProvider.
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
+};
 
-        <!-- Seção de Administração -->
-        <div id="admin-panel-section" class="mt-8 p-6 bg-white rounded-xl shadow-md border border-gray-100 flex flex-col items-center" style="display: none;">
-            <h2 class="text-3xl font-bold text-gray-800 mb-6 text-center">Painel de Administração</h2>
-            <p class="text-gray-600 text-center mb-8 text-lg leading-relaxed max-w-2xl">
-                Ferramentas administrativas para gerenciar usuários.
-            </p>
-            
-            <!-- Formulário para Criar Novo Usuário -->
-            <form id="create-user-form" class="w-full max-w-md p-6 bg-gray-50 rounded-lg shadow-inner mb-6">
-                <h3 class="text-2xl font-semibold text-gray-800 mb-4 text-center">Criar Novo Usuário</h3>
-                <div class="mb-4">
-                    <label for="new-user-username" class="block text-sm font-medium text-gray-700 mb-2">Nome de Usuário (E-mail)</label>
-                    <input
-                        type="email"
-                        id="new-user-username"
-                        class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition duration-150 ease-in-out hover:border-blue-400"
-                        placeholder="nome.usuario@exemplo.com"
-                        required
-                    />
-                </div>
-                <div class="mb-4">
-                    <label for="new-user-display-name" class="block text-sm font-medium text-gray-700 mb-2">Nome de Exibição</label>
-                    <input
-                        type="text"
-                        id="new-user-display-name"
-                        class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition duration-150 ease-in-out hover:border-blue-400"
-                        placeholder="Nome para exibir (ex: João Silva)"
-                        required
-                    />
-                </div>
-                <div class="mb-6">
-                    <label for="new-user-password" class="block text-sm font-medium text-gray-700 mb-2">Senha</label>
-                    <input
-                        type="password"
-                        id="new-user-password"
-                        class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition duration-150 ease-in-out hover:border-blue-400"
-                        placeholder="********"
-                        required
-                    />
-                </div>
-                <div class="mb-6 flex items-center">
-                    <input type="checkbox" id="new-user-is-admin" class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
-                    <label for="new-user-is-admin" class="ml-2 block text-sm text-gray-900">É Administrador?</label>
-                </div>
-                <button type="submit"
-                    class="w-full px-8 py-3 bg-gradient-to-r from-green-600 to-emerald-700 text-white font-bold rounded-lg shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition duration-300 ease-in-out transform hover:scale-105">
-                    Criar Usuário
-                </button>
-                <div id="create-user-message-display"></div>
-            </form>
+// --- Componentes Reutilizáveis de UI ---
 
-            <!-- Formulário para Redefinir Senha de Usuário (Removido para simplicidade e segurança no cliente) -->
-            <div class="mt-8 p-4 bg-yellow-100 text-yellow-800 rounded-lg shadow-inner text-sm">
-                <p class="font-semibold">Nota:</p>
-                <p>A redefinição de senha para outros usuários não está disponível diretamente no cliente por razões de segurança. Geralmente, isso é feito através de um fluxo de e-mail de redefinição de senha ou por ferramentas de administração de backend.</p>
-            </div>
+/**
+ * LoadingSpinner: Componente simples para exibir um indicador de carregamento.
+ */
+const LoadingSpinner = ({ message = 'Carregando...' }) => (
+  <div className="flex flex-col items-center justify-center p-4">
+    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mb-2"></div>
+    <p className="text-gray-700">{message}</p>
+  </div>
+);
 
-            <button id="admin-panel-back-btn"
-                class="mt-8 flex items-center px-6 py-2 bg-gray-100 text-gray-600 rounded-lg font-semibold hover:bg-gray-200 transition-colors duration-200 shadow-sm">
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-left mr-2"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
-                Voltar
-            </button>
-        </div>
+/**
+ * ErrorMessage: Componente para exibir mensagens de erro.
+ */
+const ErrorMessage = ({ message }) => (
+  <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
+    <strong className="font-bold">Erro!</strong>
+    <span className="block sm:inline ml-2">{message}</span>
+  </div>
+);
 
-        <!-- Conteúdo da Seção: URL Transformation (Placeholder) -->
-        <div id="url-transformation-section" class="mt-8 p-6 bg-white rounded-xl shadow-md border border-gray-100 flex flex-col items-center" style="display: none;">
-            <h2 class="text-3xl font-bold text-gray-800 mb-6 text-center">Transformação de URL</h2>
-            <p class="text-gray-600 text-center mb-8 text-lg leading-relaxed max-w-2xl">
-                Esta é a seção para a funcionalidade de transformação de URL. Você pode adicionar seu formulário e lógica aqui.
-            </p>
-            <div id="url-transformation-message-display"></div>
-            <button id="url-transformation-back-btn"
-                class="mt-8 flex items-center px-6 py-2 bg-gray-100 text-gray-600 rounded-lg font-semibold hover:bg-gray-200 transition-colors duration-200 shadow-sm">
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-left mr-2"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
-                Voltar
-            </button>
-        </div>
+/**
+ * SuccessMessage: Componente para exibir mensagens de sucesso.
+ */
+const SuccessMessage = ({ message }) => (
+  <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative" role="alert">
+    <strong className="font-bold">Sucesso!</strong>
+    <span className="block sm:inline ml-2">{message}</span>
+  </div>
+);
 
+/**
+ * MenuButton: Componente para os botões de navegação no menu principal.
+ * Inclui ícone, texto e estilo consistente.
+ */
+const MenuButton = ({ children, onClick, iconClass }) => (
+  <button
+    onClick={onClick}
+    className="flex flex-col items-center justify-center p-6 bg-blue-500 text-white rounded-lg shadow-md hover:bg-blue-600 transform hover:scale-105 transition duration-300 ease-in-out text-lg font-semibold"
+  >
+    {iconClass && <i className={`${iconClass} text-3xl mb-2`}></i>}
+    {children}
+  </button>
+);
 
+// --- Componente: Tela de Login ---
+const LoginScreen = ({ setScreen }) => {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const { login, loading, authError } = useAuth(); // Acessa o estado de autenticação
+
+  const handleSubmit = async (e) => {
+    e.preventDefault(); // Previne o comportamento padrão de recarregar a página
+    const result = await login(email, password);
+    if (result.success) {
+      setScreen('mainMenu'); // Navega para o menu principal em caso de sucesso
+    }
+    // A mensagem de erro será exibida via `authError` no componente.
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4">
+      <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-md">
+        <h2 className="text-3xl font-bold text-center text-gray-800 mb-8">Login</h2>
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <div>
+            <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+            <input
+              type="email"
+              id="email"
+              className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 transition duration-200 ease-in-out"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+            />
+          </div>
+          <div>
+            <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">Senha</label>
+            <input
+              type="password"
+              id="password"
+              className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 transition duration-200 ease-in-out"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+            />
+          </div>
+          {authError && <ErrorMessage message={authError} />} {/* Exibe erro de autenticação */}
+          <button
+            type="submit"
+            className="w-full bg-blue-600 text-white py-3 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition duration-300 ease-in-out font-semibold text-lg"
+            disabled={loading} // Desabilita o botão durante o carregamento do login
+          >
+            {loading ? 'Entrando...' : 'Entrar'}
+          </button>
+        </form>
+      </div>
     </div>
+  );
+};
 
-    <!-- Supabase JS -->
-    <script type="module">
-        // Supabase client setup
-        const SUPABASE_URL = 'YOUR_SUPABASE_URL'; // Substitua pela sua URL do Supabase
-        const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY'; // Substitua pela sua Chave Anon do Supabase
+// --- Componente: Menu Principal ---
+const MainMenu = ({ setScreen }) => {
+  const { user, logout } = useAuth(); // Acessa o usuário logado e a função de logout
 
-        const supabase = Supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  return (
+    <div className="min-h-screen bg-gray-100 flex flex-col items-center justify-center p-4">
+      <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-2xl text-center">
+        <h2 className="text-3xl font-bold text-gray-800 mb-6">Bem-vindo, {user?.nome || 'Usuário'}!</h2>
+        <p className="text-gray-600 mb-8">Selecione uma opção para continuar:</p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Botões de navegação para as diferentes telas */}
+          <MenuButton onClick={() => setScreen('cadastroFiliais')} iconClass="fas fa-building">
+            Cadastro de Filiais
+          </MenuButton>
+          <MenuButton onClick={() => setScreen('cadastroEquipamentos')} iconClass="fas fa-truck-moving">
+            Cadastro de Equipamentos
+          </MenuButton>
+          <MenuButton onClick={() => setScreen('trocaFilialFixa')} iconClass="fas fa-exchange-alt">
+            Troca de Filial Fixa
+          </MenuButton>
+          <MenuButton onClick={() => setScreen('dashboard')} iconClass="fas fa-chart-bar">
+            Dashboard
+          </MenuButton>
+        </div>
+        <button
+          onClick={() => {
+            logout(); // Executa o logout
+            setScreen('login'); // Retorna para a tela de login
+          }}
+          className="mt-10 px-6 py-3 bg-red-600 text-white rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition duration-300 ease-in-out font-semibold"
+        >
+          Sair
+        </button>
+      </div>
+    </div>
+  );
+};
 
-        // Variáveis de estado globais
-        let plateData = []; // Dados de placas e histórico
-        let branchesData = []; // Lista de filiais cadastradas
-        let appUsers = []; // Lista de usuários do aplicativo (login, displayName, isAdmin)
-        let loading = true;
-        let error = null;
-        let message = { text: '', type: '' }; // { text: '...', type: 'success' | 'error' | 'info' }
-        let currentView = 'auth'; // 'auth', null (main buttons), 'cadastroEquipamento', 'alteracaoFilial', 'cadastroFilial', 'dashboard', 'adminPanel', 'urlTransformation'
-        let currentCadastroMode = 'manual'; // 'manual' ou 'bulk'
-        let loggedInAppUser = null; // Armazena o usuário logado no sistema personalizado (id, login, displayName, isAdmin)
+// --- Componente: Cadastro de Filiais ---
+const CadastroFiliaisScreen = ({ setScreen }) => {
+  const [nomeFilial, setNomeFilial] = useState('');
+  const [responsavelId, setResponsavelId] = useState('');
+  const [usuarios, setUsuarios] = useState([]); // Lista de usuários para o dropdown de responsáveis
+  const [message, setMessage] = useState(''); // Mensagens de feedback (sucesso/erro)
+  const [loading, setLoading] = useState(false); // Indica se o formulário está sendo enviado
+  const [dataLoading, setDataLoading] = useState(true); // Indica se os dados iniciais (usuários) estão carregando
 
-        // Referências aos elementos DOM
-        let authSection = null;
-        let appLoginForm = null; 
-        let appLoginUsernameInput = null; // Alterado para input de texto (email)
-        let appLoginPasswordInput = null; 
-        let appLoginMessageDisplay = null; 
-
-        let userInfoBar = null;
-        let currentUserDisplay = null;
-        let logoutBtn = null;
-
-        let initialButtonsSection = null;
-        let cadastroEquipamentoSection = null;
-        let alteracaoFilialSection = null;
-        let cadastroFilialSection = null;
-        let dashboardSection = null;
-        let adminPanelSection = null; 
-        let urlTransformationSection = null; // Novo elemento para a seção de URL Transformation
-
-        let cadastroEquipamentoFormManual = null;
-        let cadastroEquipamentoPlateInput = null;
-        let cadastroEquipamentoBranchInput = null;
-        let cadastroEquipamentoDateInput = null;
-        let cadastroEquipamentoMessageDisplay = null;
-        let plateSuggestionsCadastro = null;
-        let branchSuggestionsCadastro = null;
-
-        let alteracaoFilialForm = null;
-        let alteracaoFilialPlateInput = null;
-        let alteracaoFilialBranchInput = null;
-        let alteracaoFilialDateInput = null;
-        let alteracaoFilialMessageDisplay = null;
-        let plateSuggestionsAlteracao = null;
-        let branchSuggestionsAlteracao = null;
-
-        let cadastroFilialForm = null;
-        let cadastroFilialNameInput = null;
-        let cadastroFilialMessageDisplay = null;
-
-        let dashboardBranchSelect = null;
-        let dashboardResultsDiv = null;
-        let dashboardFilialNameSpan = null;
-        let dashboardEquipmentCountSpan = null;
-        let dashboardEquipmentListUl = null;
-        let dashboardMessageDisplay = null;
-
-        let cadastroEquipamentoBackBtn = null;
-        let alteracaoFilialBackBtn = null;
-        let cadastroFilialBackBtn = null;
-        let dashboardBackBtn = null;
-        let adminPanelBtn = null; 
-        let adminPanelBackBtn = null; 
-        let urlTransformationBtn = null; // Novo botão para URL Transformation
-        let urlTransformationBackBtn = null; // Novo botão de voltar para URL Transformation
-
-
-        // Elementos do Painel de Administração
-        let createUserForm = null; 
-        let newUserNameInput = null; // Usado para email/login
-        let newUserDisplayNameInput = null;
-        let newUserPasswordInput = null;
-        let newUserIsAdminCheckbox = null;
-        let createUserMessageDisplay = null;
-
-        let toggleManualCadastroBtn = null;
-        let toggleBulkUploadBtn = null;
-        let cadastroEquipamentoFormBulk = null;
-        let bulkUploadTextarea = null;
-        let processBulkUploadBtn = null;
-        let bulkUploadResultsDisplay = null;
-        let bulkUploadProgressBar = null;
-
-
-        // --- Funções de Utilidade ---
-
-        function MessageDisplay(targetElement, text, type) {
-            if (!targetElement) {
-                console.error("Target element for MessageDisplay is null.");
-                return;
-            }
-            
-            if (!text) {
-                targetElement.innerHTML = '';
-                return;
-            }
-
-            let bgColor, textColor, iconSvg;
-            switch (type) {
-                case 'success':
-                    bgColor = 'bg-green-100';
-                    textColor = 'text-green-800';
-                    iconSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-check-circle"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg>';
-                    break;
-                case 'error':
-                    bgColor = 'bg-red-100';
-                    textColor = 'text-red-800';
-                    iconSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-x-circle"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg>';
-                    break;
-                case 'info':
-                    bgColor = 'bg-blue-100';
-                    textColor = 'text-blue-800';
-                    iconSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-info"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>';
-                    break;
-                default:
-                    bgColor = 'bg-gray-100';
-                    textColor = 'text-gray-800';
-                    iconSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-info"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>';
-            }
-
-            targetElement.innerHTML = `
-                <div class="mt-6 p-4 flex items-center justify-center gap-2 rounded-xl text-center font-medium border shadow-md ${bgColor} ${textColor} animate-fade-in-down">
-                    ${iconSvg}
-                    <span>${text}</span>
-                </div>
-            `;
+  // useEffect para buscar a lista de usuários quando o componente é montado.
+  useEffect(() => {
+    const fetchUsuarios = async () => {
+      setDataLoading(true); // Inicia o carregamento dos dados
+      setMessage(''); // Limpa mensagens anteriores
+      try {
+        const { data, error } = await supabase.from('usuarios').select('id, nome');
+        if (error) {
+          throw error;
         }
+        setUsuarios(data); // Atualiza o estado com a lista de usuários
+      } catch (error) {
+        console.error('Erro ao buscar usuários:', error.message);
+        setMessage('Erro ao carregar responsáveis: ' + error.message);
+      } finally {
+        setDataLoading(false); // Finaliza o carregamento dos dados
+      }
+    };
+    fetchUsuarios();
+  }, []); // Array de dependências vazio para executar apenas uma vez
 
-        function formatDate(isoDate) {
-            if (!isoDate || isoDate === 'N/A') return 'N/A';
-            const date = new Date(isoDate);
-            const day = String(date.getDate()).padStart(2, '0');
-            const month = String(date.getMonth() + 1).padStart(2, '0');
-            const year = date.getFullYear();
-            return `${day}/${month}/${year}`;
+  /**
+   * Lida com o envio do formulário de cadastro de filial.
+   * Insere um novo registro na tabela 'filiais' do Supabase.
+   */
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setMessage(''); // Limpa mensagens anteriores
+    setLoading(true); // Inicia o carregamento do formulário
+
+    try {
+      const { error } = await supabase
+        .from('filiais')
+        .insert([{ nome_filial: nomeFilial, responsavel_id: responsavelId }]);
+
+      if (error) {
+        throw error;
+      }
+      setMessage('Filial cadastrada com sucesso!');
+      setNomeFilial(''); // Limpa o campo de nome da filial
+      setResponsavelId(''); // Reseta a seleção do responsável
+    } catch (error) {
+      console.error('Erro ao cadastrar filial:', error.message);
+      setMessage('Erro ao cadastrar filial: ' + error.message);
+    } finally {
+      setLoading(false); // Finaliza o carregamento do formulário
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-100 flex flex-col items-center justify-center p-4">
+      <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-md">
+        <h2 className="text-3xl font-bold text-center text-gray-800 mb-8">Cadastro de Filiais</h2>
+        {dataLoading ? (
+          <LoadingSpinner message="Carregando responsáveis..." />
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div>
+              <label htmlFor="nomeFilial" className="block text-sm font-medium text-gray-700 mb-1">Nome da Filial</label>
+              <input
+                type="text"
+                id="nomeFilial"
+                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 transition duration-200 ease-in-out"
+                value={nomeFilial}
+                onChange={(e) => setNomeFilial(e.target.value)}
+                required
+              />
+            </div>
+            <div>
+              <label htmlFor="responsavel" className="block text-sm font-medium text-gray-700 mb-1">Responsável</label>
+              <select
+                id="responsavel"
+                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 transition duration-200 ease-in-out"
+                value={responsavelId}
+                onChange={(e) => setResponsavelId(e.target.value)}
+                required
+                // Desabilita o select se estiver carregando ou se não houver usuários disponíveis
+                disabled={loading || usuarios.length === 0}
+              >
+                <option value="">Selecione um responsável</option>
+                {usuarios.map((user) => (
+                  <option key={user.id} value={user.id}>
+                    {user.nome}
+                  </option>
+                ))}
+              </select>
+              {usuarios.length === 0 && !dataLoading && (
+                <p className="text-red-500 text-xs mt-1">Nenhum responsável encontrado. Cadastre usuários primeiro.</p>
+              )}
+            </div>
+            {message && (message.includes('sucesso') ? <SuccessMessage message={message} /> : <ErrorMessage message={message} />)}
+            <button
+              type="submit"
+              className="w-full bg-blue-600 text-white py-3 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition duration-300 ease-in-out font-semibold text-lg"
+              // Desabilita o botão se estiver carregando ou se não houver responsáveis para associar
+              disabled={loading || usuarios.length === 0}
+            >
+              {loading ? 'Cadastrando...' : 'Cadastrar Filial'}
+            </button>
+          </form>
+        )}
+        <button
+          onClick={() => setScreen('mainMenu')}
+          className="mt-6 w-full px-6 py-3 bg-gray-500 text-white rounded-md hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition duration-300 ease-in-out font-semibold"
+        >
+          Voltar ao Menu
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// --- Componente: Cadastro de Equipamentos ---
+const CadastroEquipamentosScreen = ({ setScreen }) => {
+  const [placa, setPlaca] = useState('');
+  const [tipoEquipamento, setTipoEquipamento] = useState('');
+  const [message, setMessage] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  // Array de strings com os tipos de equipamento permitidos para validação.
+  const tiposPermitidos = ['Bomba Lança', 'Bomba Estacionária', 'Betoneira'];
+
+  /**
+   * Lida com o envio do formulário de cadastro de equipamento.
+   * Insere um novo registro na tabela 'equipamentos' do Supabase.
+   */
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setMessage(''); // Limpa mensagens anteriores
+    setLoading(true); // Inicia o carregamento do formulário
+
+    // Validação básica do tipo de equipamento selecionado.
+    if (!tiposPermitidos.includes(tipoEquipamento)) {
+      setMessage('Tipo de equipamento inválido. Por favor, selecione um dos tipos permitidos.');
+      setLoading(false);
+      return; // Interrompe a execução se a validação falhar
+    }
+
+    try {
+      const { error } = await supabase
+        .from('equipamentos')
+        .insert([{ placa: placa, tipo_equipamento: tipoEquipamento }]);
+
+      if (error) {
+        throw error;
+      }
+      setMessage('Equipamento cadastrado com sucesso!');
+      setPlaca(''); // Limpa o campo da placa
+      setTipoEquipamento(''); // Reseta a seleção do tipo de equipamento
+    } catch (error) {
+      console.error('Erro ao cadastrar equipamento:', error.message);
+      setMessage('Erro ao cadastrar equipamento: ' + error.message);
+    } finally {
+      setLoading(false); // Finaliza o carregamento do formulário
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-100 flex flex-col items-center justify-center p-4">
+      <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-md">
+        <h2 className="text-3xl font-bold text-center text-gray-800 mb-8">Cadastro de Equipamentos</h2>
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <div>
+            <label htmlFor="placa" className="block text-sm font-medium text-gray-700 mb-1">Número da Placa</label>
+            <input
+              type="text"
+              id="placa"
+              className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 transition duration-200 ease-in-out"
+              value={placa}
+              onChange={(e) => setPlaca(e.target.value)}
+              required
+            />
+          </div>
+          <div>
+            <label htmlFor="tipoEquipamento" className="block text-sm font-medium text-gray-700 mb-1">Tipo de Equipamento</label>
+            <select
+              id="tipoEquipamento"
+              className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 transition duration-200 ease-in-out"
+              value={tipoEquipamento}
+              onChange={(e) => setTipoEquipamento(e.target.value)}
+              required
+              disabled={loading} // Desabilita o select durante o envio do formulário
+            >
+              <option value="">Selecione o tipo</option>
+              {tiposPermitidos.map((tipo) => (
+                <option key={tipo} value={tipo}>
+                  {tipo}
+                </option>
+              ))}
+            </select>
+          </div>
+          {message && (message.includes('sucesso') ? <SuccessMessage message={message} /> : <ErrorMessage message={message} />)}
+          <button
+            type="submit"
+            className="w-full bg-blue-600 text-white py-3 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition duration-300 ease-in-out font-semibold text-lg"
+            disabled={loading} // Desabilita o botão durante o envio do formulário
+          >
+            {loading ? 'Cadastrando...' : 'Cadastrar Equipamento'}
+          </button>
+        </form>
+        <button
+          onClick={() => setScreen('mainMenu')}
+          className="mt-6 w-full px-6 py-3 bg-gray-500 text-white rounded-md hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition duration-300 ease-in-out font-semibold"
+        >
+          Voltar ao Menu
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// --- Componente: Troca de Filial Fixa ---
+const TrocaFilialFixaScreen = ({ setScreen }) => {
+  const [equipamentoId, setEquipamentoId] = useState('');
+  const [novaFilialId, setNovaFilialId] = useState('');
+  const [dataExecucao, setDataExecucao] = useState('');
+  const [equipamentos, setEquipamentos] = useState([]); // Lista de equipamentos para o dropdown
+  const [filiais, setFiliais] = useState([]); // Lista de filiais para o dropdown
+  const [message, setMessage] = useState('');
+  const [loading, setLoading] = useState(false); // Indica se o formulário está sendo enviado
+  const [dataLoading, setDataLoading] = useState(true); // Indica se os dados iniciais (equipamentos/filiais) estão carregando
+
+  // useEffect para buscar a lista de equipamentos e filiais quando o componente é montado.
+  useEffect(() => {
+    const fetchData = async () => {
+      setDataLoading(true); // Inicia o carregamento dos dados
+      setMessage(''); // Limpa mensagens anteriores
+      try {
+        const { data: eqData, error: eqError } = await supabase.from('equipamentos').select('id, placa');
+        const { data: filData, error: filError } = await supabase.from('filiais').select('id, nome_filial');
+
+        if (eqError) throw eqError;
+        setEquipamentos(eqData); // Atualiza o estado com a lista de equipamentos
+
+        if (filError) throw filError;
+        setFiliais(filData); // Atualiza o estado com a lista de filiais
+      } catch (error) {
+        console.error('Erro ao buscar dados:', error.message);
+        setMessage('Erro ao carregar equipamentos ou filiais: ' + error.message);
+      } finally {
+        setDataLoading(false); // Finaliza o carregamento dos dados
+      }
+    };
+    fetchData();
+  }, []); // Array de dependências vazio para executar apenas uma vez
+
+  /**
+   * Lida com o envio do formulário de troca de filial.
+   * Atualiza o histórico de filiais na tabela 'historico_filiais_equipamentos'.
+   */
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setMessage(''); // Limpa mensagens anteriores
+    setLoading(true); // Inicia o carregamento do formulário
+
+    try {
+      // Passo 1: Encontrar o registro de histórico ATUAL do equipamento (onde data_fim é NULL).
+      const { data: currentHistory, error: currentHistoryError } = await supabase
+        .from('historico_filiais_equipamentos')
+        .select('*')
+        .eq('equipamento_id', equipamentoId)
+        .is('data_fim', null) // Procura o registro ativo
+        .single(); // Espera um único resultado
+
+      if (currentHistoryError && currentHistoryError.code !== 'PGRST116') {
+        // 'PGRST116' significa "nenhuma linha encontrada", o que é esperado se não houver histórico ativo.
+        // Outros erros são lançados.
+        throw new Error('Erro ao buscar histórico atual: ' + currentHistoryError.message);
+      }
+
+      // Passo 2: Se um histórico ATUAL for encontrado, encerrá-lo (definir data_fim).
+      if (currentHistory) {
+        const dataFimAntiga = new Date(dataExecucao);
+        // Define a data de fim como o dia anterior à data de execução da nova filial.
+        dataFimAntiga.setDate(dataFimAntiga.getDate() - 1);
+
+        const { error: updateError } = await supabase
+          .from('historico_filiais_equipamentos')
+          .update({ data_fim: dataFimAntiga.toISOString().split('T')[0] }) // Formata para 'YYYY-MM-DD'
+          .eq('id', currentHistory.id); // Atualiza o registro específico
+
+        if (updateError) {
+          throw new Error('Erro ao encerrar filial antiga: ' + updateError.message);
         }
+      }
 
-        function parseDateToISO(ddmmyyyy) {
-            if (!ddmmyyyy) return '';
-            const parts = ddmmyyyy.split('/');
-            if (parts.length === 3) {
-                return `${parts[2]}-${parts[1]}-${parts[0]}`; // Converte para YYYY-MM-DD
-            }
-            return ddmmyyyy; // Retorna como está se já for ISO ou inválido
+      // Passo 3: Inserir o NOVO registro de histórico para a nova filial.
+      const { error: insertError } = await supabase
+        .from('historico_filiais_equipamentos')
+        .insert([
+          {
+            equipamento_id: equipamentoId,
+            filial_id: novaFilialId,
+            data_inicio: dataExecucao,
+            data_fim: null, // A nova filial é a atual, então data_fim é NULL
+          },
+        ]);
+
+      if (insertError) {
+        throw new Error('Erro ao registrar nova filial: ' + insertError.message);
+      }
+
+      setMessage('Troca de filial registrada com sucesso!');
+      setEquipamentoId(''); // Limpa a seleção do equipamento
+      setNovaFilialId(''); // Limpa a seleção da nova filial
+      setDataExecucao(''); // Limpa a data de execução
+    } catch (error) {
+      console.error('Erro na troca de filial:', error.message);
+      setMessage('Erro na troca de filial: ' + error.message);
+    } finally {
+      setLoading(false); // Finaliza o carregamento do formulário
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-100 flex flex-col items-center justify-center p-4">
+      <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-md">
+        <h2 className="text-3xl font-bold text-center text-gray-800 mb-8">Troca de Filial Fixa</h2>
+        {dataLoading ? (
+          <LoadingSpinner message="Carregando equipamentos e filiais..." />
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div>
+              <label htmlFor="equipamento" className="block text-sm font-medium text-gray-700 mb-1">Selecionar Equipamento</label>
+              <select
+                id="equipamento"
+                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 transition duration-200 ease-in-out"
+                value={equipamentoId}
+                onChange={(e) => setEquipamentoId(e.target.value)}
+                required
+                disabled={loading || equipamentos.length === 0}
+              >
+                <option value="">Selecione uma placa</option>
+                {equipamentos.map((eq) => (
+                  <option key={eq.id} value={eq.id}>
+                    {eq.placa}
+                  </option>
+                ))}
+              </select>
+              {equipamentos.length === 0 && !dataLoading && (
+                <p className="text-red-500 text-xs mt-1">Nenhum equipamento encontrado. Cadastre equipamentos primeiro.</p>
+              )}
+            </div>
+            <div>
+              <label htmlFor="novaFilial" className="block text-sm font-medium text-gray-700 mb-1">Nova Filial Fixa</label>
+              <select
+                id="novaFilial"
+                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 transition duration-200 ease-in-out"
+                value={novaFilialId}
+                onChange={(e) => setNovaFilialId(e.target.value)}
+                required
+                disabled={loading || filiais.length === 0}
+              >
+                <option value="">Selecione a nova filial</option>
+                {filiais.map((filial) => (
+                  <option key={filial.id} value={filial.id}>
+                    {filial.nome_filial}
+                  </option>
+                ))}
+              </select>
+              {filiais.length === 0 && !dataLoading && (
+                <p className="text-red-500 text-xs mt-1">Nenhuma filial encontrada. Cadastre filiais primeiro.</p>
+              )}
+            </div>
+            <div>
+              <label htmlFor="dataExecucao" className="block text-sm font-medium text-gray-700 mb-1">Data de Execução</label>
+              <input
+                type="date"
+                id="dataExecucao"
+                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 transition duration-200 ease-in-out"
+                value={dataExecucao}
+                onChange={(e) => setDataExecucao(e.target.value)}
+                required
+                disabled={loading}
+              />
+            </div>
+            {message && (message.includes('sucesso') ? <SuccessMessage message={message} /> : <ErrorMessage message={message} />)}
+            <button
+              type="submit"
+              className="w-full bg-blue-600 text-white py-3 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition duration-300 ease-in-out font-semibold text-lg"
+              disabled={loading || equipamentos.length === 0 || filiais.length === 0}
+            >
+              {loading ? 'Registrando...' : 'Registrar Troca'}
+            </button>
+          </form>
+        )}
+        <button
+          onClick={() => setScreen('mainMenu')}
+          className="mt-6 w-full px-6 py-3 bg-gray-500 text-white rounded-md hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition duration-300 ease-in-out font-semibold"
+        >
+          Voltar ao Menu
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// --- Componente: Dashboard ---
+const DashboardScreen = ({ setScreen }) => {
+  const [responsavelId, setResponsavelId] = useState('');
+  const [usuarios, setUsuarios] = useState([]); // Lista de usuários para o filtro de responsável
+  const [filiaisDoResponsavel, setFiliaisDoResponsavel] = useState([]); // Filiais gerenciadas pelo responsável selecionado
+  const [equipamentosAtivos, setEquipamentosAtivos] = useState({}); // Objeto para armazenar equipamentos por filial: { filialId: [equipamentos] }
+  const [loading, setLoading] = useState(false); // Indica se os dados do dashboard estão carregando
+  const [message, setMessage] = useState('');
+  const [dataLoading, setDataLoading] = useState(true); // Indica se os dados iniciais (usuários) estão carregando
+
+  // useEffect para buscar a lista de usuários quando o componente é montado.
+  useEffect(() => {
+    const fetchUsuarios = async () => {
+      setDataLoading(true);
+      setMessage('');
+      try {
+        const { data, error } = await supabase.from('usuarios').select('id, nome');
+        if (error) {
+          throw error;
         }
+        setUsuarios(data);
+      } catch (error) {
+        console.error('Erro ao buscar usuários:', error.message);
+        setMessage('Erro ao carregar responsáveis: ' + error.message);
+      } finally {
+        setDataLoading(false);
+      }
+    };
+    fetchUsuarios();
+  }, []);
 
-        function populateDashboardBranches() {
-            if (dashboardBranchSelect) {
-                dashboardBranchSelect.innerHTML = '<option value="">-- Selecione uma Filial --</option>';
-                branchesData.forEach(branch => {
-                    const option = document.createElement('option');
-                    option.value = branch.nome; // Usa o nome da filial
-                    option.textContent = branch.nome;
-                    dashboardBranchSelect.appendChild(option);
-                });
-            }
+  // useEffect para buscar os dados do dashboard sempre que o responsável selecionado mudar.
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      // Limpa os dados se nenhum responsável for selecionado
+      if (!responsavelId) {
+        setFiliaisDoResponsavel([]);
+        setEquipamentosAtivos({});
+        return;
+      }
+
+      setLoading(true); // Inicia o carregamento dos dados do dashboard
+      setMessage(''); // Limpa mensagens anteriores
+      setFiliaisDoResponsavel([]); // Limpa filiais anteriores
+      setEquipamentosAtivos({}); // Limpa equipamentos anteriores
+
+      try {
+        // 1. Buscar filiais associadas ao responsável selecionado.
+        const { data: filiaisData, error: filiaisError } = await supabase
+          .from('filiais')
+          .select('id, nome_filial')
+          .eq('responsavel_id', responsavelId); // Filtra as filiais pelo ID do responsável
+
+        if (filiaisError) throw filiaisError;
+        setFiliaisDoResponsavel(filiaisData); // Atualiza o estado com as filiais encontradas
+
+        // 2. Para cada filial, buscar os equipamentos ativos associados.
+        const equipamentosByFilial = {};
+        for (const filial of filiaisData) {
+          const { data: historicoData, error: historicoError } = await supabase
+            .from('historico_filiais_equipamentos')
+            .select(`
+              *,
+              equipamentos (placa, tipo_equipamento) // Faz um JOIN implícito para obter dados do equipamento
+            `)
+            .eq('filial_id', filial.id)
+            .is('data_fim', null); // Condição para equipamentos que estão atualmente ativos (data_fim é NULL)
+
+          if (historicoError) {
+            console.error(`Erro ao buscar equipamentos para filial ${filial.nome_filial}:`, historicoError.message);
+            equipamentosByFilial[filial.id] = []; // Em caso de erro, define como array vazio
+            continue;
+          }
+
+          // Mapeia os dados do histórico para um formato mais fácil de renderizar,
+          // garantindo que as propriedades de 'equipamentos' existam.
+          const activeEquipments = historicoData.map(item => ({
+            id: item.equipamento_id,
+            placa: item.equipamentos?.placa || 'N/A', // Usa 'N/A' se a placa não for encontrada
+            tipo_equipamento: item.equipamentos?.tipo_equipamento || 'N/A', // Usa 'N/A' se o tipo não for encontrado
+            data_inicio: item.data_inicio,
+          }));
+          equipamentosByFilial[filial.id] = activeEquipments;
         }
-
-        function updateCadastroModeUI() {
-            if (cadastroEquipamentoFormManual && cadastroEquipamentoFormBulk && toggleManualCadastroBtn && toggleBulkUploadBtn) {
-                if (currentCadastroMode === 'manual') {
-                    cadastroEquipamentoFormManual.style.display = 'grid';
-                    cadastroEquipamentoFormBulk.style.display = 'none';
-                    toggleManualCadastroBtn.classList.add('bg-blue-100', 'text-blue-700');
-                    toggleManualCadastroBtn.classList.remove('bg-gray-100', 'text-gray-700');
-                    toggleBulkUploadBtn.classList.add('bg-gray-100', 'text-gray-700');
-                    toggleBulkUploadBtn.classList.remove('bg-blue-100', 'text-blue-700');
-                } else { // 'bulk'
-                    cadastroEquipamentoFormManual.style.display = 'none';
-                    cadastroEquipamentoFormBulk.style.display = 'block';
-                    toggleBulkUploadBtn.classList.add('bg-blue-100', 'text-blue-700');
-                    toggleBulkUploadBtn.classList.remove('bg-gray-100', 'text-gray-700');
-                    toggleManualCadastroBtn.classList.add('bg-gray-100', 'text-gray-700');
-                    toggleManualCadastroBtn.classList.remove('bg-blue-100', 'text-blue-700');
-                }
-            }
-        }
-
-        function renderUI() {
-            // Esconde todas as seções primeiro
-            if (authSection) authSection.style.display = 'none';
-            if (initialButtonsSection) initialButtonsSection.style.display = 'none';
-            if (cadastroEquipamentoSection) cadastroEquipamentoSection.style.display = 'none';
-            if (alteracaoFilialSection) alteracaoFilialSection.style.display = 'none';
-            if (cadastroFilialSection) cadastroFilialSection.style.display = 'none';
-            if (dashboardSection) dashboardSection.style.display = 'none';
-            if (adminPanelSection) adminPanelSection.style.display = 'none'; 
-            if (urlTransformationSection) urlTransformationSection.style.display = 'none'; 
-            if (userInfoBar) userInfoBar.style.display = 'none';
-
-            // Lógica de exibição baseada no estado de autenticação e na view atual
-            if (!loggedInAppUser) { // Se não há usuário logado no sistema personalizado
-                currentView = 'auth'; // Força a view para autenticação
-                if (authSection) authSection.style.display = 'flex';
-                // Não há select de usuários para popular no Supabase auth
-                if (appLoginPasswordInput) appLoginPasswordInput.value = ''; // Limpa a senha
-            } else { // Se há um usuário logado no sistema personalizado
-                if (userInfoBar) userInfoBar.style.display = 'flex';
-                if (currentUserDisplay && loggedInAppUser) {
-                    currentUserDisplay.textContent = loggedInAppUser.displayName || loggedInAppUser.login;
-                }
-                // Exibe o botão de administração se o usuário for admin
-                if (adminPanelBtn) {
-                    adminPanelBtn.style.display = (loggedInAppUser && loggedInAppUser.isAdmin) ? 'flex' : 'none';
-                }
-
-                if (currentView === 'auth') { // Se estava na tela de auth mas já logou, vai para a tela principal
-                    currentView = null;
-                }
-
-                if (currentView === null) {
-                    if (initialButtonsSection) initialButtonsSection.style.display = 'flex';
-                } else if (currentView === 'cadastroEquipamento') {
-                    if (cadastroEquipamentoSection) cadastroEquipamentoSection.style.display = 'flex';
-                    if (cadastroEquipamentoFormManual) cadastroEquipamentoFormManual.reset();
-                    if (bulkUploadTextarea) bulkUploadTextarea.value = '';
-                    if (bulkUploadResultsDisplay) bulkUploadResultsDisplay.style.display = 'none';
-                    if (cadastroEquipamentoMessageDisplay) MessageDisplay(cadastroEquipamentoMessageDisplay, '', '');
-                    updateCadastroModeUI();
-                } else if (currentView === 'alteracaoFilial') {
-                    if (alteracaoFilialSection) alteracaoFilialSection.style.display = 'flex';
-                    if (alteracaoFilialForm) alteracaoFilialForm.reset();
-                    if (alteracaoFilialMessageDisplay) MessageDisplay(alteracaoFilialMessageDisplay, '', '');
-                } else if (currentView === 'cadastroFilial') {
-                    if (cadastroFilialSection) cadastroFilialSection.style.display = 'flex';
-                    if (cadastroFilialForm) cadastroFilialForm.reset();
-                    if (cadastroFilialMessageDisplay) MessageDisplay(cadastroFilialMessageDisplay, '', '');
-                } else if (currentView === 'dashboard') {
-                    if (dashboardSection) dashboardSection.style.display = 'flex';
-                    populateDashboardBranches();
-                    if (dashboardMessageDisplay) MessageDisplay(dashboardMessageDisplay, '', '');
-
-                    const selectedBranch = dashboardBranchSelect ? dashboardBranchSelect.value : '';
-                    if (selectedBranch && dashboardFilialNameSpan && dashboardEquipmentCountSpan && dashboardEquipmentListUl && dashboardResultsDiv) {
-                        const equipmentsInBranch = plateData.filter(item => item.currentBranch === selectedBranch);
-                        dashboardFilialNameSpan.textContent = selectedBranch;
-                        dashboardEquipmentCountSpan.textContent = equipmentsInBranch.length;
-                        dashboardEquipmentListUl.innerHTML = '';
-                        if (equipmentsInBranch.length === 0) {
-                            dashboardEquipmentListUl.innerHTML = `<li class="text-gray-500">Nenhum equipamento encontrado para esta filial.</li>`;
-                        } else {
-                            equipmentsInBranch.forEach(item => {
-                                const li = document.createElement('li');
-                                li.textContent = item.plate;
-                                dashboardEquipmentListUl.appendChild(li);
-                            });
-                        }
-                        dashboardResultsDiv.style.display = 'block';
-                    } else if (dashboardResultsDiv) {
-                        dashboardResultsDiv.style.display = 'none';
-                    }
-                } else if (currentView === 'adminPanel') { 
-                    if (adminPanelSection) adminPanelSection.style.display = 'flex';
-                    if (createUserMessageDisplay) MessageDisplay(createUserMessageDisplay, '', '');
-                } else if (currentView === 'urlTransformation') {
-                    if (urlTransformationSection) urlTransformationSection.style.display = 'flex';
-                }
-            }
-        }
-
-
-        // --- Funções de Interação com Supabase ---
-
-        async function fetchPlateData() {
-            try {
-                const { data, error } = await supabase
-                    .from('equipamentos')
-                    .select('id, placa, filial, trocas(nova_filial, data, usuario)'); // Inclui o histórico de trocas
-
-                if (error) throw error;
-
-                plateData = data.map(item => {
-                    // Encontra a troca mais recente para determinar a filial atual e a data
-                    let currentBranch = 'N/A';
-                    let currentStartDate = 'N/A';
-                    let history = [];
-
-                    if (item.trocas && item.trocas.length > 0) {
-                        // Ordena as trocas pela data em ordem decrescente
-                        const sortedTrocas = item.trocas.sort((a, b) => new Date(b.data) - new Date(a.data));
-                        currentBranch = sortedTrocas[0].nova_filial;
-                        currentStartDate = sortedTrocas[0].data;
-                        history = sortedTrocas.map(t => ({ branch: t.nova_filial, startDate: t.data, user: t.usuario }));
-                    } else {
-                        // Se não houver trocas, a filial atual é a filial inicial do equipamento
-                        currentBranch = item.filial;
-                        // Para a data inicial, precisaria de um campo 'data_cadastro' na tabela equipamentos
-                        // Por enquanto, deixaremos como N/A ou você pode adicionar um campo 'data_cadastro'
-                        currentStartDate = 'N/A'; // Ou uma data padrão
-                    }
-
-                    return {
-                        id: item.id,
-                        plate: item.placa,
-                        currentBranch: currentBranch,
-                        currentStartDate: currentStartDate,
-                        history: history,
-                    };
-                });
-                loading = false;
-                renderUI();
-            } catch (err) {
-                console.error("Erro ao buscar dados de placas do Supabase:", err);
-                error = `Erro ao carregar dados de placas: ${err.message}. Por favor, verifique suas políticas RLS para a tabela 'equipamentos'.`;
-                loading = false;
-                renderUI();
-            }
-        }
-
-        async function fetchBranchesData() {
-            try {
-                const { data, error } = await supabase
-                    .from('filiais')
-                    .select('nome');
-
-                if (error) throw error;
-                branchesData = data; // Supabase retorna um array de objetos { nome: '...' }
-                populateDashboardBranches();
-            } catch (err) {
-                console.error("Erro ao buscar dados de filiais do Supabase:", err);
-                if (dashboardMessageDisplay) MessageDisplay(dashboardMessageDisplay, `Erro ao carregar filiais: ${err.message}.`, 'error');
-            }
-        }
-
-        async function fetchAppUsers() {
-            try {
-                // Busca usuários da sua tabela 'usuarios' personalizada
-                const { data, error } = await supabase
-                    .from('usuarios')
-                    .select('id, login, display_name, is_admin'); // Assumindo display_name e is_admin na sua tabela usuarios
-
-                if (error) throw error;
-                appUsers = data.map(user => ({
-                    id: user.id,
-                    username: user.login,
-                    displayName: user.display_name,
-                    isAdmin: user.is_admin
-                }));
-            } catch (err) {
-                console.error("Erro ao buscar usuários do aplicativo:", err);
-                MessageDisplay(appLoginMessageDisplay, `Erro ao carregar usuários: ${err.message}. Verifique suas políticas RLS para a tabela 'usuarios'.`, 'error');
-            }
-        }
-
-        // Listener para mudanças de autenticação do Supabase
-        supabase.auth.onAuthStateChange(async (event, session) => {
-            if (event === 'SIGNED_IN' && session) {
-                // Usuário autenticado pelo Supabase
-                const { data: userData, error: userError } = await supabase
-                    .from('usuarios')
-                    .select('login, display_name, is_admin')
-                    .eq('id', session.user.id)
-                    .single();
-
-                if (userError) {
-                    console.error("Erro ao buscar perfil do usuário:", userError);
-                    MessageDisplay(appLoginMessageDisplay, `Erro ao carregar perfil: ${userError.message}`, 'error');
-                    loggedInAppUser = null;
-                    renderUI();
-                    return;
-                }
-
-                loggedInAppUser = {
-                    id: session.user.id,
-                    login: userData.login,
-                    displayName: userData.display_name,
-                    isAdmin: userData.is_admin || false
-                };
-                console.log("Usuário logado:", loggedInAppUser);
-                await fetchPlateData(); // Carrega dados específicos do usuário
-                await fetchBranchesData(); // Carrega filiais
-                currentView = null; // Volta para a tela principal
-                renderUI();
-            } else if (event === 'SIGNED_OUT') {
-                loggedInAppUser = null;
-                plateData = [];
-                branchesData = [];
-                currentView = 'auth';
-                renderUI();
-            }
-        });
-
-
-        // --- Funções de Autocomplete ---
-        function setupAutocomplete(inputElement, suggestionsContainer, dataArray, keyField) {
-            if (!inputElement || !suggestionsContainer) return;
-
-            inputElement.addEventListener('input', () => {
-                const inputValue = inputElement.value.trim().toUpperCase();
-                suggestionsContainer.innerHTML = '';
-                suggestionsContainer.style.display = 'none';
-
-                if (inputValue.length === 0) {
-                    return;
-                }
-
-                const filteredData = dataArray.filter(item => {
-                    const valueToMatch = typeof item === 'string' ? item : item[keyField];
-                    return valueToMatch.toUpperCase().includes(inputValue);
-                });
-
-                if (filteredData.length > 0) {
-                    filteredData.forEach(item => {
-                        const suggestionValue = typeof item === 'string' ? item : item[keyField];
-                        const suggestionItem = document.createElement('div');
-                        suggestionItem.classList.add('p-2', 'cursor-pointer', 'hover:bg-blue-100', 'border-b', 'border-gray-200', 'last:border-b-0');
-                        suggestionItem.textContent = suggestionValue;
-                        suggestionItem.addEventListener('click', () => {
-                            inputElement.value = suggestionValue;
-                            suggestionsContainer.style.display = 'none';
-                        });
-                        suggestionsContainer.appendChild(suggestionItem);
-                    });
-                    suggestionsContainer.style.display = 'block';
-                }
-            });
-
-            inputElement.addEventListener('blur', () => {
-                setTimeout(() => {
-                    suggestionsContainer.style.display = 'none';
-                }, 100);
-            });
-        }
-
-
-        // Inicia o aplicativo quando o DOM estiver completamente carregado
-        document.addEventListener('DOMContentLoaded', async () => {
-            // Referências aos elementos DOM
-            authSection = document.getElementById('auth-section');
-            appLoginForm = document.getElementById('app-login-form');
-            appLoginUsernameInput = document.getElementById('app-login-username-input'); 
-            appLoginPasswordInput = document.getElementById('app-login-password');
-            appLoginMessageDisplay = document.getElementById('app-login-message-display');
-
-            userInfoBar = document.getElementById('user-info-bar');
-            currentUserDisplay = document.getElementById('current-user-display');
-            logoutBtn = document.getElementById('logout-btn');
-
-            initialButtonsSection = document.getElementById('initial-buttons-section');
-            cadastroEquipamentoSection = document.getElementById('cadastro-equipamento-section');
-            alteracaoFilialSection = document.getElementById('alteracao-filial-section');
-            cadastroFilialSection = document.getElementById('cadastro-filial-section');
-            dashboardSection = document.getElementById('dashboard-section');
-            adminPanelSection = document.getElementById('admin-panel-section');
-            urlTransformationSection = document.getElementById('url-transformation-section'); 
-
-            cadastroEquipamentoFormManual = document.getElementById('cadastro-equipamento-form-manual');
-            cadastroEquipamentoPlateInput = document.getElementById('cadastro-equipamento-plate');
-            cadastroEquipamentoBranchInput = document.getElementById('cadastro-equipamento-branch');
-            cadastroEquipamentoDateInput = document.getElementById('cadastro-equipamento-date');
-            cadastroEquipamentoMessageDisplay = document.getElementById('cadastro-equipamento-message-display');
-            plateSuggestionsCadastro = document.getElementById('plate-suggestions-cadastro');
-            branchSuggestionsCadastro = document.getElementById('branch-suggestions-cadastro');
-
-            alteracaoFilialForm = document.getElementById('alteracao-filial-form');
-            alteracaoFilialPlateInput = document.getElementById('alteracao-filial-plate');
-            alteracaoFilialBranchInput = document.getElementById('alteracao-filial-branch');
-            alteracaoFilialDateInput = document.getElementById('alteracao-filial-date');
-            alteracaoFilialMessageDisplay = document.getElementById('alteracao-filial-message-display');
-            plateSuggestionsAlteracao = document.getElementById('plate-suggestions-alteracao');
-            branchSuggestionsAlteracao = document.getElementById('branch-suggestions-alteracao');
-
-            cadastroFilialForm = document.getElementById('cadastro-filial-form');
-            cadastroFilialNameInput = document.getElementById('cadastro-filial-name');
-            cadastroFilialMessageDisplay = document.getElementById('cadastro-filial-message-display');
-
-            dashboardBranchSelect = document.getElementById('dashboard-branch-select');
-            dashboardResultsDiv = document.getElementById('dashboard-results');
-            dashboardFilialNameSpan = document.getElementById('dashboard-filial-name');
-            dashboardEquipmentCountSpan = document.getElementById('dashboard-equipment-count');
-            dashboardEquipmentListUl = document.getElementById('dashboard-equipment-list');
-            dashboardMessageDisplay = document.getElementById('dashboard-message-display');
-
-            cadastroEquipamentoBackBtn = document.getElementById('cadastro-equipamento-back-btn');
-            alteracaoFilialBackBtn = document.getElementById('alteracao-filial-back-btn');
-            cadastroFilialBackBtn = document.getElementById('cadastro-filial-back-btn');
-            dashboardBackBtn = document.getElementById('dashboard-back-btn');
-            adminPanelBtn = document.getElementById('admin-panel-btn');
-            adminPanelBackBtn = document.getElementById('admin-panel-back-btn');
-            urlTransformationBtn = document.getElementById('url-transformation-btn'); 
-            urlTransformationBackBtn = document.getElementById('url-transformation-back-btn'); 
-            
-            createUserForm = document.getElementById('create-user-form');
-            newUserNameInput = document.getElementById('new-user-username');
-            newUserDisplayNameInput = document.getElementById('new-user-display-name');
-            newUserPasswordInput = document.getElementById('new-user-password');
-            newUserIsAdminCheckbox = document.getElementById('new-user-is-admin');
-            createUserMessageDisplay = document.getElementById('create-user-message-display');
-
-            toggleManualCadastroBtn = document.getElementById('toggle-manual-cadastro-btn');
-            toggleBulkUploadBtn = document.getElementById('toggle-bulk-upload-btn');
-            cadastroEquipamentoFormBulk = document.getElementById('cadastro-equipamento-form-bulk');
-            bulkUploadTextarea = document.getElementById('bulk-upload-textarea');
-            processBulkUploadBtn = document.getElementById('process-bulk-upload-btn');
-            bulkUploadResultsDisplay = document.getElementById('bulk-upload-results-display');
-            bulkUploadProgressBar = document.getElementById('bulk-upload-progress');
-
-            // Inicializa a UI
-            renderUI();
-            
-            // Tenta obter a sessão atual do Supabase (se o usuário já estiver logado)
-            const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-            if (sessionError) {
-                console.error("Erro ao obter sessão Supabase:", sessionError);
-                MessageDisplay(appLoginMessageDisplay, `Erro de sessão: ${sessionError.message}`, 'error');
-            } else if (session) {
-                // Se houver uma sessão ativa, busca o perfil do usuário
-                const { data: userData, error: userError } = await supabase
-                    .from('usuarios')
-                    .select('login, display_name, is_admin')
-                    .eq('id', session.user.id)
-                    .single();
-
-                if (userError) {
-                    console.error("Erro ao buscar perfil do usuário na inicialização:", userError);
-                    MessageDisplay(appLoginMessageDisplay, `Erro ao carregar perfil: ${userError.message}`, 'error');
-                    loggedInAppUser = null;
-                } else {
-                    loggedInAppUser = {
-                        id: session.user.id,
-                        login: userData.login,
-                        displayName: userData.display_name,
-                        isAdmin: userData.is_admin || false
-                    };
-                    await fetchPlateData();
-                    await fetchBranchesData();
-                    currentView = null; // Vai para a tela principal se já estiver logado
-                }
-            } else {
-                // Não há sessão, permanece na tela de autenticação
-                currentView = 'auth';
-            }
-            renderUI();
-
-
-            // --- Event Listeners de Autenticação Personalizada ---
-            if (appLoginForm) {
-                appLoginForm.addEventListener('submit', async (e) => {
-                    e.preventDefault();
-                    const login = appLoginUsernameInput.value.trim(); // E-mail para Supabase
-                    const password = appLoginPasswordInput.value;
-
-                    if (!login || !password) {
-                        MessageDisplay(appLoginMessageDisplay, "Por favor, insira seu e-mail e senha.", 'info');
-                        return;
-                    }
-
-                    try {
-                        const { data, error } = await supabase.auth.signInWithPassword({
-                            email: login,
-                            password: password,
-                        });
-
-                        if (error) {
-                            console.error("Erro no login do Supabase Auth:", error); // Adicionado debug
-                            throw error;
-                        }
-
-                        // Se o login for bem-sucedido, busca os dados da tabela 'usuarios'
-                        const { data: userData, error: userProfileError } = await supabase
-                            .from('usuarios')
-                            .select('login, display_name, is_admin')
-                            .eq('id', data.user.id)
-                            .single();
-
-                        if (userProfileError) {
-                            console.error("Erro ao buscar perfil do usuário na tabela 'usuarios':", userProfileError); // Adicionado debug
-                            throw userProfileError;
-                        }
-
-                        loggedInAppUser = {
-                            id: data.user.id,
-                            login: userData.login,
-                            displayName: userData.display_name,
-                            isAdmin: userData.is_admin || false
-                        };
-                        MessageDisplay(appLoginMessageDisplay, 'Login bem-sucedido!', 'success');
-                        appLoginForm.reset();
-                        await fetchPlateData();
-                        await fetchBranchesData();
-                        currentView = null; // Volta para a tela principal
-                        renderUI();
-                    } catch (error) {
-                        console.error("Erro geral no login:", error); // Adicionado debug
-                        MessageDisplay(appLoginMessageDisplay, `Erro ao tentar fazer login: ${error.message}. Verifique suas credenciais e as políticas RLS para 'auth.users' e 'usuarios'.`, 'error'); // Mensagem mais detalhada
-                    }
-                });
-            }
-
-            if (logoutBtn) {
-                logoutBtn.addEventListener('click', async () => {
-                    try {
-                        const { error } = await supabase.auth.signOut();
-                        if (error) throw error;
-                        loggedInAppUser = null; 
-                        plateData = [];
-                        branchesData = [];
-                        currentView = 'auth'; 
-                        renderUI();
-                    } catch (error) {
-                        console.error("Erro ao fazer logout:", error);
-                        MessageDisplay(appLoginMessageDisplay, `Erro ao fazer logout: ${error.message}`, 'error');
-                    }
-                });
-            }
-
-            // --- Event Listeners do Painel de Administração ---
-            if (adminPanelBtn) {
-                adminPanelBtn.addEventListener('click', () => {
-                    if (loggedInAppUser && loggedInAppUser.isAdmin) {
-                        currentView = 'adminPanel';
-                        renderUI();
-                    } else {
-                        MessageDisplay(appLoginMessageDisplay, "Acesso negado. Você não tem permissões de administrador.", 'error');
-                    }
-                });
-            }
-
-            if (adminPanelBackBtn) {
-                adminPanelBackBtn.addEventListener('click', () => {
-                    currentView = null; // Volta para a tela principal
-                    renderUI();
-                });
-            }
-
-            // Criar Novo Usuário
-            if (createUserForm) {
-                createUserForm.addEventListener('submit', async (e) => {
-                    e.preventDefault();
-                    const login = newUserNameInput.value.trim(); // E-mail para Supabase auth
-                    const displayName = newUserDisplayNameInput.value.trim();
-                    const password = newUserPasswordInput.value;
-                    const isAdmin = newUserIsAdminCheckbox.checked;
-
-                    if (!login || !displayName || !password) {
-                        MessageDisplay(createUserMessageDisplay, "Por favor, preencha todos os campos.", 'info');
-                        return;
-                    }
-
-                    if (!loggedInAppUser || !loggedInAppUser.isAdmin) {
-                        MessageDisplay(createUserMessageDisplay, "Acesso negado. Você não tem permissões de administrador para criar usuários.", 'error');
-                        return;
-                    }
-
-                    try {
-                        // 1. Cria o usuário no sistema de autenticação do Supabase
-                        const { data: authData, error: authError } = await supabase.auth.signUp({
-                            email: login,
-                            password: password,
-                        });
-
-                        if (authError) {
-                            console.error("Erro ao criar usuário no Supabase Auth:", authError); // Adicionado debug
-                            throw authError;
-                        }
-
-                        // 2. Insere os dados adicionais na sua tabela 'usuarios'
-                        const { error: profileError } = await supabase
-                            .from('usuarios')
-                            .insert([
-                                { 
-                                    id: authData.user.id, // Vincula ao ID do usuário Supabase Auth
-                                    login: login, 
-                                    display_name: displayName, 
-                                    is_admin: isAdmin 
-                                }
-                            ]);
-
-                        if (profileError) {
-                            // Se falhar a inserção do perfil, pode ser necessário deletar o usuário do auth
-                            console.error("Erro ao inserir perfil na tabela 'usuarios':", profileError); // Adicionado debug
-                            // A exclusão de usuário via cliente requer a chave de serviço de administrador,
-                            // o que não é seguro para apps de frontend.
-                            // Em um cenário real, isso seria tratado por uma Edge Function ou API de backend.
-                            // await supabase.auth.admin.deleteUser(authData.user.id); // Requer chave de serviço de administrador
-                            throw profileError;
-                        }
-
-                        MessageDisplay(createUserMessageDisplay, `Usuário "${login}" criado com sucesso!`, 'success');
-                        createUserForm.reset();
-                    } catch (error) {
-                        console.error("Erro geral ao criar usuário:", error); // Adicionado debug
-                        MessageDisplay(createUserMessageDisplay, `Erro ao criar usuário: ${error.message}.`, 'error');
-                    }
-                });
-            }
-
-
-            // Configura autocomplete para os campos (precisam ser chamados após os dados serem carregados)
-            // Note: Autocomplete para placas e filiais será baseado nos dados já carregados do Supabase
-            setupAutocomplete(cadastroEquipamentoPlateInput, plateSuggestionsCadastro, plateData, 'placa');
-            setupAutocomplete(cadastroEquipamentoBranchInput, branchSuggestionsCadastro, branchesData, 'nome');
-            setupAutocomplete(alteracaoFilialPlateInput, plateSuggestionsAlteracao, plateData, 'placa');
-            setupAutocomplete(alteracaoFilialBranchInput, branchSuggestionsAlteracao, branchesData, 'nome');
-
-
-            // CADASTRO DE EQUIPAMENTO (MANUAL)
-            if (cadastroEquipamentoFormManual) {
-                cadastroEquipamentoFormManual.addEventListener('submit', async (e) => {
-                    e.preventDefault();
-                    const currentPlate = cadastroEquipamentoPlateInput.value.trim().toUpperCase();
-                    const currentBranch = cadastroEquipamentoBranchInput.value.trim().toUpperCase();
-                    const currentDate = cadastroEquipamentoDateInput.value; // YYYY-MM-DD
-
-                    if (!loggedInAppUser) {
-                        MessageDisplay(cadastroEquipamentoMessageDisplay, "Usuário não autenticado. Por favor, faça login.", 'error');
-                        return;
-                    }
-
-                    if (!currentPlate || !currentBranch || !currentDate) {
-                        MessageDisplay(cadastroEquipamentoMessageDisplay, "Por favor, preencha todos os campos.", 'info');
-                        return;
-                    }
-
-                    // Verifica se a filial existe
-                    const { data: branchExists, error: branchError } = await supabase
-                        .from('filiais')
-                        .select('nome')
-                        .eq('nome', currentBranch)
-                        .single();
-
-                    if (branchError && branchError.code === 'PGRST116') { // No rows found
-                        MessageDisplay(cadastroEquipamentoMessageDisplay, `Filial "${currentBranch}" não cadastrada. Por favor, cadastre a filial primeiro.`, 'error');
-                        return;
-                    } else if (branchError) {
-                        console.error("Erro ao verificar filial:", branchError); // Adicionado debug
-                        MessageDisplay(cadastroEquipamentoMessageDisplay, `Erro ao verificar filial: ${branchError.message}.`, 'error');
-                        return;
-                    }
-
-                    try {
-                        // Verifica se a placa já existe
-                        const { data: existingPlate, error: selectError } = await supabase
-                            .from('equipamentos')
-                            .select('id')
-                            .eq('placa', currentPlate)
-                            .single();
-
-                        if (selectError && selectError.code === 'PGRST116') { // No rows found, so insert new equipment
-                            const { error: insertEquipError } = await supabase
-                                .from('equipamentos')
-                                .insert([
-                                    { placa: currentPlate, filial: currentBranch } // Tipo pode ser 'N/A' ou adicionado ao formulário
-                                ]);
-                            if (insertEquipError) {
-                                console.error("Erro ao inserir equipamento:", insertEquipError); // Adicionado debug
-                                throw insertEquipError;
-                            }
-
-                            // Insere a primeira troca na tabela 'trocas'
-                            const { error: insertTrocaError } = await supabase
-                                .from('trocas')
-                                .insert([
-                                    { 
-                                        placa: currentPlate, 
-                                        nova_filial: currentBranch, 
-                                        usuario: loggedInAppUser.login, // Usa o login do usuário logado
-                                        data: currentDate 
-                                    }
-                                ]);
-                            if (insertTrocaError) {
-                                console.error("Erro ao inserir troca:", insertTrocaError); // Adicionado debug
-                                throw insertTrocaError;
-                            }
-
-                            MessageDisplay(cadastroEquipamentoMessageDisplay, `Equipamento ${currentPlate} cadastrado com sucesso na filial ${currentBranch}.`, 'success');
-                            cadastroEquipamentoFormManual.reset();
-                            fetchPlateData(); // Atualiza os dados
-                        } else if (selectError) {
-                            console.error("Erro ao selecionar placa existente:", selectError); // Adicionado debug
-                            throw selectError; // Outro erro de seleção
-                        } else {
-                            // Placa já existe
-                            MessageDisplay(cadastroEquipamentoMessageDisplay, `Placa "${currentPlate}" já cadastrada. Utilize a opção 'Alteração de Filial' para modificá-la.`, 'error');
-                        }
-                    } catch (e) {
-                        console.error("Erro geral ao cadastrar equipamento:", e); // Adicionado debug
-                        MessageDisplay(cadastroEquipamentoMessageDisplay, `Erro ao cadastrar equipamento: ${e.message}. Por favor, tente novamente.`, 'error');
-                    }
-                });
-            }
-
-
-            // PROCESSAR UPLOAD EM MASSA
-            if (processBulkUploadBtn) {
-                processBulkUploadBtn.addEventListener('click', async () => {
-                    const rawData = bulkUploadTextarea.value.trim();
-                    if (!rawData) {
-                        MessageDisplay(cadastroEquipamentoMessageDisplay, "Por favor, cole os dados na área de texto.", 'info');
-                        return;
-                    }
-                    if (!loggedInAppUser) {
-                        MessageDisplay(cadastroEquipamentoMessageDisplay, "Usuário não autenticado. Por favor, faça login.", 'error');
-                        return;
-                    }
-
-                    if (bulkUploadResultsDisplay) {
-                        bulkUploadResultsDisplay.innerHTML = `<p class="text-center text-blue-600">Processando... <span id="bulk-upload-progress">0%</span></p>`;
-                        bulkUploadResultsDisplay.style.display = 'block';
-                        bulkUploadProgressBar = document.getElementById('bulk-upload-progress');
-                    }
-                    MessageDisplay(cadastroEquipamentoMessageDisplay, '', '');
-
-                    const lines = rawData.split('\n').filter(line => line.trim() !== '');
-                    const totalLines = lines.length;
-                    let processedLines = 0;
-
-                    const results = { success: [], errors: [] };
-                    const newBranchesToInsert = new Set();
-                    const newEquipmentsToInsert = [];
-                    const newTrocasToInsert = [];
-
-                    // Pré-verifica filiais existentes para evitar consultas repetidas
-                    const { data: existingBranches, error: existingBranchesError } = await supabase
-                        .from('filiais')
-                        .select('nome');
-                    if (existingBranchesError) {
-                        console.error("Erro ao buscar filiais existentes:", existingBranchesError); // Adicionado debug
-                        MessageDisplay(cadastroEquipamentoMessageDisplay, `Erro ao preparar upload: ${existingBranchesError.message}.`, 'error');
-                        return;
-                    }
-                    const existingBranchNames = new Set(existingBranches.map(b => b.nome));
-
-                    // Pré-verifica placas existentes
-                    const { data: existingEquipments, error: existingEquipmentsError } = await supabase
-                        .from('equipamentos')
-                        .select('placa');
-                    if (existingEquipmentsError) {
-                        console.error("Erro ao buscar equipamentos existentes:", existingEquipmentsError); // Adicionado debug
-                        MessageDisplay(cadastroEquipamentoMessageDisplay, `Erro ao preparar upload: ${existingEquipmentsError.message}.`, 'error');
-                        return;
-                    }
-                    const existingPlateNames = new Set(existingEquipments.map(e => e.placa));
-
-
-                    for (const line of lines) {
-                        const parts = line.split('\t').map(p => p.trim());
-                        if (parts.length < 6 || parts[0].toUpperCase() !== 'PLACA' || parts[2].toUpperCase() !== 'FILIAL' || parts[4].toUpperCase() !== 'DATA') {
-                            results.errors.push(`Linha inválida (formato esperado: PLACA\\t[valor]\\tFILIAL\\t[valor]\\tDATA\\t[valor]): ${line}`);
-                            processedLines++;
-                            if (bulkUploadProgressBar) bulkUploadProgressBar.textContent = `${Math.floor((processedLines / totalLines) * 100)}%`;
-                            continue;
-                        }
-
-                        const plate = parts[1].toUpperCase();
-                        const branch = parts[3].toUpperCase();
-                        const date = parseDateToISO(parts[5]);
-
-                        if (!plate || !branch || !date) {
-                            results.errors.push(`Dados incompletos na linha: ${line}`);
-                            processedLines++;
-                            if (bulkUploadProgressBar) bulkUploadProgressBar.textContent = `${Math.floor((processedLines / totalLines) * 100)}%`;
-                            continue;
-                        }
-
-                        // Adiciona nova filial à lista para inserção, se não existir
-                        if (!existingBranchNames.has(branch) && !newBranchesToInsert.has(branch)) {
-                            newBranchesToInsert.add(branch);
-                        }
-
-                        // Verifica se a placa já existe
-                        if (!existingPlateNames.has(plate)) {
-                            newEquipmentsToInsert.push({ placa: plate, filial: branch }); // Assumindo tipo 'N/A'
-                            existingPlateNames.add(plate); // Adiciona à lista de placas existentes para evitar duplicatas no mesmo upload
-                        }
-
-                        // Adiciona a troca
-                        newTrocasToInsert.push({
-                            placa: plate,
-                            nova_filial: branch,
-                            usuario: loggedInAppUser.login,
-                            data: date
-                        });
-
-                        processedLines++;
-                        if (bulkUploadProgressBar) bulkUploadProgressBar.textContent = `${Math.floor((processedLines / totalLines) * 100)}%`;
-                    }
-
-                    try {
-                        // Inserir novas filiais
-                        if (newBranchesToInsert.size > 0) {
-                            const branchesArray = Array.from(newBranchesToInsert).map(name => ({ nome: name }));
-                            const { error: insertBranchesError } = await supabase
-                                .from('filiais')
-                                .insert(branchesArray);
-                            if (insertBranchesError) {
-                                console.error("Erro ao inserir filiais em massa:", insertBranchesError); // Adicionado debug
-                                throw insertBranchesError;
-                            }
-                            branchesArray.forEach(b => results.success.push(`Filial "${b.nome}" adicionada.`));
-                        }
-
-                        // Inserir novos equipamentos
-                        if (newEquipmentsToInsert.length > 0) {
-                            const { error: insertEquipmentsError } = await supabase
-                                .from('equipamentos')
-                                .insert(newEquipmentsToInsert);
-                            if (insertEquipmentsError) {
-                                console.error("Erro ao inserir equipamentos em massa:", insertEquipmentsError); // Adicionado debug
-                                throw insertEquipmentsError;
-                            }
-                            newEquipmentsToInsert.forEach(e => results.success.push(`Equipamento "${e.placa}" cadastrado.`));
-                        }
-
-                        // Inserir todas as trocas (incluindo as de equipamentos existentes)
-                        if (newTrocasToInsert.length > 0) {
-                            const { error: insertTrocasError } = await supabase
-                                .from('trocas')
-                                .insert(newTrocasToInsert);
-                            if (insertTrocasError) {
-                                console.error("Erro ao inserir trocas em massa:", insertTrocasError); // Adicionado debug
-                                throw insertTrocasError;
-                            }
-                            newTrocasToInsert.forEach(t => results.success.push(`Troca para "${t.placa}" registrada.`));
-                        }
-
-                        let outputHtml = '<div><p class="font-bold text-green-700">Upload Concluído!</p>';
-                        if (results.success.length > 0) {
-                            outputHtml += `<p class="text-green-600">Sucessos (${results.success.length}):</p><ul class="list-disc list-inside">`;
-                            results.success.forEach(msg => outputHtml += `<li>${msg}</li>`);
-                            outputHtml += '</ul>';
-                        }
-                        if (results.errors.length > 0) {
-                            outputHtml += `<p class="font-bold text-red-700 mt-4">Erros (${results.errors.length}):</p><ul class="list-disc list-inside">`;
-                            results.errors.forEach(msg => outputHtml += `<li class="text-red-600">${msg}</li>`);
-                            outputHtml += '</ul>';
-                        }
-                        outputHtml += '</div>';
-                        bulkUploadResultsDisplay.innerHTML = outputHtml;
-                        fetchPlateData(); // Re-fetch all data to update UI
-                    } catch (e) {
-                        console.error("Erro geral ao commitar upload em massa:", e); // Adicionado debug
-                        bulkUploadResultsDisplay.innerHTML = `<p class="font-bold text-red-700">Erro fatal no upload em massa: ${e.message}</p>`;
-                    }
-                });
-            }
-
-
-            // ALTERAÇÃO DE FILIAL
-            if (alteracaoFilialForm) {
-                alteracaoFilialForm.addEventListener('submit', async (e) => {
-                    e.preventDefault();
-                    const currentPlate = alteracaoFilialPlateInput.value.trim().toUpperCase();
-                    const newBranch = alteracaoFilialBranchInput.value.trim().toUpperCase();
-                    const newDate = alteracaoFilialDateInput.value;
-
-                    if (!loggedInAppUser) {
-                        MessageDisplay(alteracaoFilialMessageDisplay, "Usuário não autenticado. Por favor, faça login.", 'error');
-                        return;
-                    }
-
-                    if (!currentPlate || !newBranch || !newDate) {
-                        MessageDisplay(alteracaoFilialMessageDisplay, "Por favor, preencha todos os campos.", 'info');
-                        return;
-                    }
-
-                    // Verifica se a nova filial existe
-                    const { data: branchExists, error: branchError } = await supabase
-                        .from('filiais')
-                        .select('nome')
-                        .eq('nome', newBranch)
-                        .single();
-
-                    if (branchError && branchError.code === 'PGRST116') { // No rows found
-                        MessageDisplay(alteracaoFilialMessageDisplay, `Nova filial "${newBranch}" não cadastrada. Por favor, cadastre a filial primeiro.`, 'error');
-                        return;
-                    } else if (branchError) {
-                        console.error("Erro ao verificar filial:", branchError); // Adicionado debug
-                        MessageDisplay(alteracaoFilialMessageDisplay, `Erro ao verificar filial: ${branchError.message}.`, 'error');
-                        return;
-                    }
-
-                    try {
-                        // Verifica se a placa existe na tabela equipamentos
-                        const { data: equipmentData, error: equipSelectError } = await supabase
-                            .from('equipamentos')
-                            .select('id')
-                            .eq('placa', currentPlate)
-                            .single();
-                        
-                        if (equipSelectError && equipSelectError.code === 'PGRST116') {
-                            MessageDisplay(alteracaoFilialMessageDisplay, `Placa "${currentPlate}" não encontrada. Cadastre o equipamento primeiro.`, 'error');
-                            return;
-                        } else if (equipSelectError) {
-                            console.error("Erro ao selecionar equipamento para alteração:", equipSelectError); // Adicionado debug
-                            throw equipSelectError;
-                        }
-
-                        // Insere a nova troca na tabela 'trocas'
-                        const { error: insertTrocaError } = await supabase
-                            .from('trocas')
-                            .insert([
-                                { 
-                                    placa: currentPlate, 
-                                    nova_filial: newBranch, 
-                                    usuario: loggedInAppUser.login, 
-                                    data: newDate 
-                                }
-                            ]);
-
-                        if (insertTrocaError) {
-                            console.error("Erro ao inserir troca para alteração:", insertTrocaError); // Adicionado debug
-                            throw insertTrocaError;
-                        }
-
-                        MessageDisplay(alteracaoFilialMessageDisplay, `Filial do equipamento ${currentPlate} atualizada para ${newBranch} com sucesso.`, 'success');
-                        alteracaoFilialForm.reset();
-                        fetchPlateData(); // Atualiza os dados
-                    } catch (e) {
-                        console.error("Erro geral ao alterar filial:", e); // Adicionado debug
-                        MessageDisplay(alteracaoFilialMessageDisplay, `Erro ao alterar filial: ${e.message}. Por favor, tente novamente.`, 'error');
-                    }
-                });
-            }
-
-
-            // CADASTRO DE FILIAL
-            if (cadastroFilialForm) {
-                cadastroFilialForm.addEventListener('submit', async (e) => {
-                    e.preventDefault();
-                    const branchName = cadastroFilialNameInput.value.trim().toUpperCase();
-
-                    if (!loggedInAppUser) {
-                        MessageDisplay(cadastroFilialMessageDisplay, "Usuário não autenticado. Por favor, faça login.", 'error');
-                        return;
-                    }
-
-                    if (!branchName) {
-                        MessageDisplay(cadastroFilialMessageDisplay, "Por favor, insira o nome da filial.", 'info');
-                        return;
-                    }
-
-                    try {
-                        // Verifica se a filial já existe
-                        const { data: existingBranch, error: selectError } = await supabase
-                            .from('filiais')
-                            .select('nome')
-                            .eq('nome', branchName)
-                            .single();
-
-                        if (selectError && selectError.code === 'PGRST116') { // No rows found, so insert new branch
-                            const { error: insertError } = await supabase
-                                .from('filiais')
-                                .insert([
-                                    { nome: branchName }
-                                ]);
-                            if (insertError) {
-                                console.error("Erro ao inserir filial:", insertError); // Adicionado debug
-                                throw insertError;
-                            }
-
-                            MessageDisplay(cadastroFilialMessageDisplay, `Filial "${branchName}" cadastrada com sucesso.`, 'success');
-                            cadastroFilialForm.reset();
-                            fetchBranchesData(); // Atualiza a lista de filiais
-                        } else if (selectError) {
-                            console.error("Erro ao selecionar filial existente:", selectError); // Adicionado debug
-                            throw selectError; // Outro erro de seleção
-                        } else {
-                            // Filial já existe
-                            MessageDisplay(cadastroFilialMessageDisplay, `Filial "${branchName}" já cadastrada.`, 'info');
-                        }
-                    } catch (e) {
-                        console.error("Erro geral ao cadastrar filial:", e); // Adicionado debug
-                        MessageDisplay(cadastroFilialMessageDisplay, `Erro ao cadastrar filial: ${e.message}. Por favor, tente novamente.`, 'error');
-                    }
-                });
-            }
-
-
-            // DASHBOARD
-            if (dashboardBranchSelect) {
-                dashboardBranchSelect.addEventListener('change', () => {
-                    renderUI();
-                });
-            }
-
-
-            // Lógica de Exportar para Excel (mantida no Dashboard)
-            if (exportExcelBtn) {
-                exportExcelBtn.addEventListener('click', () => {
-                    if (typeof XLSX === 'undefined') {
-                        MessageDisplay(dashboardMessageDisplay, "A biblioteca de exportação (XLSX) ainda não foi carregada. Por favor, aguarde e tente novamente.", 'info');
-                        return;
-                    }
-
-                    const dataToExport = plateData.map(item => ({
-                        'PLACA': item.plate,
-                        'FILIAL': item.currentBranch,
-                        'DATA': formatDate(item.currentStartDate)
-                    }));
-
-                    const ws = XLSX.utils.json_to_sheet(dataToExport);
-                    const wb = XLSX.utils.book_new();
-                    XLSX.utils.book_append_sheet(wb, ws, "Placas e Filiais");
-                    XLSX.writeFile(wb, "Placas_e_Filiais.xlsx");
-                });
-            }
-
-
-            // --- Event Listeners para botões de navegação ---
-            if (document.getElementById('cadastro-equipamento-btn')) {
-                document.getElementById('cadastro-equipamento-btn').addEventListener('click', () => {
-                    currentView = 'cadastroEquipamento';
-                    currentCadastroMode = 'manual';
-                    renderUI();
-                });
-            }
-
-            if (document.getElementById('alteracao-filial-btn')) {
-                document.getElementById('alteracao-filial-btn').addEventListener('click', () => {
-                    currentView = 'alteracaoFilial';
-                    renderUI();
-                });
-            }
-
-            if (document.getElementById('cadastro-filial-btn')) {
-                document.getElementById('cadastro-filial-btn').addEventListener('click', () => {
-                    currentView = 'cadastroFilial';
-                    renderUI();
-                });
-            }
-
-            if (document.getElementById('dashboard-btn')) {
-                document.getElementById('dashboard-btn').addEventListener('click', () => {
-                    currentView = 'dashboard';
-                    // Resetar a seleção e esconder resultados apenas ao entrar na seção
-                    if (dashboardBranchSelect) dashboardBranchSelect.value = '';
-                    if (dashboardResultsDiv) dashboardResultsDiv.style.display = 'none';
-                    renderUI();
-                });
-            }
-
-            // Event listener para o novo botão de URL Transformation
-            if (urlTransformationBtn) {
-                urlTransformationBtn.addEventListener('click', () => {
-                    currentView = 'urlTransformation';
-                    renderUI();
-                });
-            }
-
-            // Event Listeners para botões de Voltar
-            if (cadastroEquipamentoBackBtn) {
-                cadastroEquipamentoBackBtn.addEventListener('click', () => {
-                    currentView = null;
-                    renderUI();
-                });
-            }
-
-            if (alteracaoFilialBackBtn) {
-                alteracaoFilialBackBtn.addEventListener('click', () => {
-                    currentView = null;
-                    renderUI();
-                });
-            }
-
-            if (cadastroFilialBackBtn) {
-                cadastroFilialBackBtn.addEventListener('click', () => {
-                    currentView = null;
-                    renderUI();
-                });
-            }
-
-            if (dashboardBackBtn) {
-                dashboardBackBtn.addEventListener('click', () => {
-                    currentView = null;
-                    renderUI();
-                });
-            }
-
-            if (urlTransformationBackBtn) { 
-                urlTransformationBackBtn.addEventListener('click', () => {
-                    currentView = null;
-                    renderUI();
-                });
-            }
-
-            // Event Listeners para alternar modos de cadastro
-            if (toggleManualCadastroBtn) {
-                toggleManualCadastroBtn.addEventListener('click', () => {
-                    currentCadastroMode = 'manual';
-                    updateCadastroModeUI();
-                });
-            }
-
-            if (toggleBulkUploadBtn) {
-                toggleBulkUploadBtn.addEventListener('click', () => {
-                    currentCadastroMode = 'bulk';
-                    updateCadastroModeUI();
-                });
-            }
-        });
-    </script>
-    <!-- XLSX CDN (Carregamento assíncrono para evitar bloqueio) -->
-    <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js" async defer></script>
-</body>
-</html>
-Chat, voce pode refazer esse código para mim completo? Estou fazendo um app.
- Mas queria que mudasse para mim o gmail, de terceirosdocumentacoes@gmail.com para leozarro99@gmail.com
+        setEquipamentosAtivos(equipamentosByFilial); // Atualiza o estado com os equipamentos por filial
+
+      } catch (error) {
+        console.error('Erro no dashboard:', error.message);
+        setMessage('Erro ao carregar dados do dashboard: ' + error.message);
+      } finally {
+        setLoading(false); // Finaliza o carregamento dos dados do dashboard
+      }
+    };
+
+    fetchDashboardData();
+  }, [responsavelId]); // Este efeito é re-executado sempre que 'responsavelId' muda
+
+  return (
+    <div className="min-h-screen bg-gray-100 p-4">
+      <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-4xl mx-auto">
+        <h2 className="text-3xl font-bold text-center text-gray-800 mb-8">Dashboard de Equipamentos</h2>
+        <div className="mb-6">
+          <label htmlFor="responsavel" className="block text-sm font-medium text-gray-700 mb-1">Filtrar por Responsável</label>
+          <select
+            id="responsavel"
+            className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 transition duration-200 ease-in-out"
+            value={responsavelId}
+            onChange={(e) => setResponsavelId(e.target.value)}
+            disabled={loading || dataLoading || usuarios.length === 0} // Desabilita se estiver carregando ou sem usuários
+          >
+            <option value="">Selecione um responsável</option>
+            {usuarios.map((user) => (
+              <option key={user.id} value={user.id}>
+                {user.nome}
+              </option>
+            ))}
+          </select>
+          {usuarios.length === 0 && !dataLoading && (
+            <p className="text-red-500 text-xs mt-1">Nenhum responsável encontrado. Cadastre usuários primeiro.</p>
+          )}
+        </div>
+
+        {message && <ErrorMessage message={message} />}
+        {loading && <LoadingSpinner message="Carregando dados do dashboard..." />}
+
+        {!loading && responsavelId && filiaisDoResponsavel.length === 0 && (
+          <p className="text-center text-gray-600">Nenhuma filial encontrada para este responsável.</p>
+        )}
+
+        {!loading && responsavelId && filiaisDoResponsavel.length > 0 && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filiaisDoResponsavel.map((filial) => (
+              <div key={filial.id} className="bg-blue-50 border border-blue-200 rounded-lg p-4 shadow-md">
+                <h3 className="text-xl font-semibold text-blue-800 mb-4">{filial.nome_filial}</h3>
+                {equipamentosAtivos[filial.id]?.length > 0 ? (
+                  <ul className="space-y-3">
+                    {equipamentosAtivos[filial.id].map((equipamento) => (
+                      <li key={equipamento.id} className="bg-white p-3 rounded-md shadow-sm border border-gray-200">
+                        <p className="font-medium text-gray-800">Placa: <span className="font-normal">{equipamento.placa}</span></p>
+                        <p className="text-sm text-gray-600">Tipo: <span className="font-normal">{equipamento.tipo_equipamento}</span></p>
+                        <p className="text-xs text-gray-500">Desde: <span className="font-normal">{new Date(equipamento.data_inicio).toLocaleDateString('pt-BR')}</span></p>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-gray-600 text-sm">Nenhum equipamento ativo nesta filial.</p>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        <button
+          onClick={() => setScreen('mainMenu')}
+          className="mt-8 w-full px-6 py-3 bg-gray-500 text-white rounded-md hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition duration-300 ease-in-out font-semibold"
+        >
+          Voltar ao Menu
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// --- Componente Principal da Aplicação (App) ---
+// Este é o componente raiz que orquestra a exibição das diferentes telas
+// e fornece o contexto de autenticação para toda a aplicação.
+export default function App() {
+  // 'screen' gerencia qual componente de tela está visível.
+  // Começa na tela de login por padrão.
+  const [screen, setScreen] = useState('login');
+
+  // useEffect para carregar estilos e scripts externos (Tailwind CSS, Font Awesome, Google Fonts).
+  // Garante que eles sejam injetados no <head> do documento apenas uma vez.
+  useEffect(() => {
+    // Carrega a biblioteca Font Awesome para ícones.
+    const linkFontAwesome = document.createElement('link');
+    linkFontAwesome.href = 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css';
+    linkFontAwesome.rel = 'stylesheet';
+    document.head.appendChild(linkFontAwesome);
+
+    // Carrega o framework CSS Tailwind CSS via CDN.
+    const scriptTailwind = document.createElement('script');
+    scriptTailwind.src = 'https://cdn.tailwindcss.com';
+    document.head.appendChild(scriptTailwind);
+
+    // Injeta um estilo para definir a fonte 'Inter' como padrão para o corpo.
+    const styleInter = document.createElement('style');
+    styleInter.innerHTML = `
+      body {
+        font-family: 'Inter', sans-serif;
+      }
+    `;
+    document.head.appendChild(styleInter);
+
+    // Carrega a fonte 'Inter' do Google Fonts para garantir que ela esteja disponível.
+    const fontLinkInter = document.createElement('link');
+    fontLinkInter.href = 'https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap';
+    fontLinkInter.rel = 'stylesheet';
+    document.head.appendChild(fontLinkInter);
+
+  }, []); // O array vazio de dependências significa que este efeito é executado apenas na montagem.
+
+  // Usa o hook useAuth para acessar o estado de autenticação global.
+  const { user, loading } = useAuth();
+
+  /**
+   * Função auxiliar para renderizar o componente de tela correto
+   * com base no estado 'screen' e no status de autenticação.
+   */
+  const renderCurrentScreen = () => {
+    // Exibe um spinner de carregamento enquanto o AuthProvider está inicializando.
+    if (loading) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-gray-100">
+          <LoadingSpinner message="Inicializando aplicação..." />
+        </div>
+      );
+    }
+
+    // Lógica de proteção de rota: se o usuário não estiver logado e tentar acessar
+    // qualquer tela que não seja a de login, ele é redirecionado para o login.
+    if (!user && screen !== 'login') {
+      return <LoginScreen setScreen={setScreen} />;
+    }
+
+    // Usa um switch para renderizar o componente de tela apropriado.
+    switch (screen) {
+      case 'login':
+        // Se o usuário já estiver logado, vai para o menu principal em vez de mostrar o login novamente.
+        return user ? <MainMenu setScreen={setScreen} /> : <LoginScreen setScreen={setScreen} />;
+      case 'mainMenu':
+        return <MainMenu setScreen={setScreen} />;
+      case 'cadastroFiliais':
+        return <CadastroFiliaisScreen setScreen={setScreen} />;
+      case 'cadastroEquipamentos':
+        return <CadastroEquipamentosScreen setScreen={setScreen} />;
+      case 'trocaFilialFixa':
+        return <TrocaFilialFixaScreen setScreen={setScreen} />;
+      case 'dashboard':
+        return <DashboardScreen setScreen={setScreen} />;
+      default:
+        // Caso um estado de tela inválido seja definido, retorna para o login.
+        return <LoginScreen setScreen={setScreen} />;
+    }
+  };
+
+  return (
+    // O AuthProvider envolve toda a aplicação, tornando o contexto de autenticação
+    // disponível para todos os componentes filhos.
+    <AuthProvider>
+      {renderCurrentScreen()}
+    </AuthProvider>
+  );
+}
