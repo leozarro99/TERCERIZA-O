@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gerenciamento de Placas e Filiais (Supabase - Login Personalizado)</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons CDN (para ícones) -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Supabase JS CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+    <style>
+        body {
+            font-family: "Inter", sans-serif;
+        }
+        /* Animação para mensagens */
+        @keyframes fadeInDown {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        .animate-fade-in-down {
+            animation: fadeInDown 0.3s ease-out forwards;
+        }
+        /* Estilo para a tabela em telas menores */
+        @media (max-width: 768px) {
+            table, thead, tbody, th, td, tr {
+                display: block;
+            }
+            thead tr {
+                position: absolute;
+                top: -9999px;
+                left: -9999px;
+            }
+            tr {
+                border: 1px solid #e2e8f0; /* border-gray-200 */
+                margin-bottom: 0.75rem; /* mb-3 */
+                border-radius: 0.5rem; /* rounded-lg */
+                overflow: hidden;
+            }
+            td {
+                border-bottom: 1px solid #e2e8f0;
+                position: relative;
+                padding-left: 50%;
+                text-align: right;
+            }
+            td:before {
+                position: absolute;
+                top: 0;
+                left: 6px;
+                width: 45%;
+                padding-right: 10px;
+                white-space: nowrap;
+                text-align: left;
+                font-weight: bold;
+                /* Adicione o conteúdo para cada coluna aqui */
+                /* Exemplo: content: attr(data-label); */
+            }
+            td:nth-of-type(1):before { content: "Placa"; }
+            td:nth-of-type(2):before { content: "Filial Atual"; }
+            td:nth-of-type(3):before { content: "Desde"; }
+            td:nth-of-type(4):before { content: "Histórico"; }
+
+            td:last-child {
+                border-bottom: 0;
+            }
+        }
+    </style>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 p-4 sm:p-6 flex flex-col items-center justify-center">
+
+    <div class="w-full max-w-4xl bg-white shadow-xl rounded-2xl p-6 sm:p-10 mb-8 transition-all duration-300 ease-in-out transform hover:scale-[1.005]">
+        <h1 class="text-4xl sm:text-5xl font-extrabold text-gray-900 mb-8 text-center bg-clip-text text-transparent bg-gradient-to-r from-blue-700 to-indigo-800">
+            Gerenciamento de Placas e Filiais
+        </h1>
+
+        <!-- Seção de Autenticação Personalizada -->
+        <div id="auth-section" class="flex flex-col items-center justify-center gap-6 mb-8">
+            <h2 class="text-3xl font-bold text-gray-800 text-center">Acessar o Sistema</h2>
+            <p class="text-gray-600 text-center text-lg leading-relaxed max-w-2xl">
+                Faça login para continuar.
+            </p>
+            
+            <!-- Formulário de Login Personalizado -->
+            <form id="app-login-form" class="w-full max-w-sm p-6 bg-gray-50 rounded-lg shadow-inner" style="display: block;">
+                <h3 class="text-2xl font-semibold text-gray-800 mb-4 text-center">Login</h3>
+                <div class="mb-4">
+                    <label for="app-login-username-input" class="block text-sm font-medium text-gray-700 mb-2">Usuário (Login)</label>
+                    <input
+                        type="text"
+                        id="app-login-username-input"
+                        class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition duration-150 ease-in-out hover:border-blue-400"
+                        placeholder="seu.login"
+                        required
+                    />
+                </div>
+                <div class="mb-6">
+                    <label for="app-login-password" class="block text-sm font-medium text-gray-700 mb-2">Senha</label>
+                    <input
+                        type="password"
+                        id="app-login-password"
+                        class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition duration-150 ease-in-out hover:border-blue-400"
+                        placeholder="********"
+                        required
+                    />
+                </div>
+                <button type="submit"
+                    class="w-full px-8 py-3 bg-gradient-to-r from-blue-600 to-indigo-700 text-white font-bold rounded-lg shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition duration-300 ease-in-out transform hover:scale-105">
+                    Entrar
+                </button>
+                <div id="app-login-message-display"></div>
+            </form>
+        </div>
+
+        <!-- Informação do Usuário Logado e Botão de Sair -->
+        <div id="user-info-bar" class="flex justify-between items-center mb-6 p-3 bg-gray-50 rounded-lg shadow-sm" style="display: none;">
+            <p class="text-gray-700 font-semibold">Usuário: <span id="current-user-display" class="text-blue-700"></span></p>
+            <button id="logout-btn"
+                class="px-4 py-2 bg-red-200 text-red-700 rounded-lg font-semibold hover:bg-red-300 transition-colors duration-200 shadow-sm">
+                Sair
+            </button>
+        </div>
+
+
+        <!-- Seção de Botões de Navegação Inicial -->
+        <div id="initial-buttons-section" class="flex flex-col gap-4 mb-8" style="display: none;">
+            <button id="cadastro-equipamento-btn"
+                class="flex items-center justify-center px-8 py-4 rounded-xl font-bold text-lg shadow-md transition-all duration-300 ease-in-out transform hover:scale-105 bg-gradient-to-r from-blue-600 to-indigo-700 text-white hover:bg-blue-700">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-plus-circle mr-3"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/><path d="M12 8v8"/></svg>
+                CADASTRO DE EQUIPAMENTO
+            </button>
+            <button id="alteracao-filial-btn"
+                class="flex items-center justify-center px-8 py-4 rounded-xl font-bold text-lg shadow-md transition-all duration-300 ease-in-out transform hover:scale-105 bg-gradient-to-r from-blue-600 to-indigo-700 text-white hover:bg-blue-700">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-pencil mr-3"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+                ALTERAÇÃO DE FILIAL
+            </button>
+            <button id="cadastro-filial-btn"
+                class="flex items-center justify-center px-8 py-4 rounded-xl font-bold text-lg shadow-md transition-all duration-300 ease-in-out transform hover:scale-105 bg-gradient-to-r from-blue-600 to-indigo-700 text-white hover:bg-blue-700">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-building-2 mr-3"><path d="M6 22V7H4V2h10v5h2v15h-2v-5h-2v5h-2v-5h-2v5H8v-5H6v5Zm4 0v-5h2v5h-2Z"/><path d="M18 22V12h-2v10h2Z"/><path d="M22 22V17h-2v5h2Z"/></svg>
+                CADASTRO DE FILIAL
+            </button>
+            <button id="dashboard-btn"
+                class="flex items-center justify-center px-8 py-4 rounded-xl font-bold text-lg shadow-md transition-all duration-300 ease-in-out transform hover:scale-105 bg-gradient-to-r from-blue-600 to-indigo-700 text-white hover:bg-blue-700">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-layout-dashboard mr-3"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
+                DASHBOARD
+            </button>
+            <button id="admin-panel-btn"
+                class="flex items-center justify-center px-8 py-4 rounded-xl font-bold text-lg shadow-md transition-all duration-300 ease-in-out transform hover:scale-105 bg-gradient-to-r from-purple-600 to-pink-700 text-white hover:bg-purple-700" style="display: none;">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-shield mr-3"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                ADMINISTRAÇÃO
+            </button>
+            <!-- Novo botão para a seção de URL Transformation -->
+            <button id="url-transformation-btn"
+                class="flex items-center justify-center px-8 py-4 rounded-xl font-bold text-lg shadow-md transition-all duration-300 ease-in-out transform hover:scale-105 bg-gradient-to-r from-teal-600 to-cyan-700 text-white hover:bg-teal-700">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-link mr-3"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07L9.5 3.5"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07L14.5 20.5"/></svg>
+                TRANSFORMAÇÃO DE URL
+            </button>
+        </div>
+
+        <!-- Conteúdo da Seção: CADASTRO DE EQUIPAMENTO -->
+        <div id="cadastro-equipamento-section" class="mt-8 p-6 bg-white rounded-xl shadow-md border border-gray-100 flex flex-col items-center" style="display: none;">
+            <h2 class="text-3xl font-bold text-gray-800 mb-6 text-center">Cadastro de Equipamento</h2>
+            <p class="text-gray-600 text-center mb-8 text-lg leading-relaxed max-w-2xl">
+                Utilize esta seção para registrar novos equipamentos com sua placa, filial e data inicial.
+            </p>
+
+            <div class="flex gap-4 mb-6">
+                <button id="toggle-manual-cadastro-btn"
+                    class="px-6 py-2 rounded-lg font-semibold transition-all duration-200 bg-blue-100 text-blue-700 hover:bg-blue-200">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-list-plus mr-2"><path d="M11 12H3"/><path d="M16 6H3"/><path d="M16 18H3"/><path d="M18 9v6"/><path d="M21 12h-6"/></svg>
+                    Cadastro Manual
+                </button>
+                <button id="toggle-bulk-upload-btn"
+                    class="px-6 py-2 rounded-lg font-semibold transition-all duration-200 bg-gray-100 text-gray-700 hover:bg-gray-200">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-upload mr-2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" x2="12" y1="3" y2="15"/></svg>
+                    Upload em Massa
+                </button>
+            </div>
+
+            <!-- Formulário de Cadastro Manual -->
+            <form id="cadastro-equipamento-form-manual" class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 w-full max-w-2xl">
+                <div>
+                    <label for="cadastro-equipamento-plate" class="block text-sm font-medium text-gray-700 mb-2">PLACA</label>
+                    <input
+                        type="text"
+                        id="cadastro-equipamento-plate"
+                        class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition duration-150 ease-in-out hover:border-blue-400 uppercase"
+                        placeholder="Ex: ABC1234"
+                        required
+                    />
+                    <div id="plate-suggestions-cadastro" class="absolute z-10 w-full bg-white border border-gray-300 rounded-lg shadow-lg mt-1 max-h-40 overflow-y-auto" style="display: none;"></div>
+                </div>
+                <div>
+                    <label for="cadastro-equipamento-branch" class="block text-sm font-medium text-gray-700 mb-2">FILIAL (Sigla)</label>
+                    <input
+                        type="text"
+                        id="cadastro-equipamento-branch"
+                        class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition duration-150 ease-in-out hover:border-blue-400 uppercase"
+                        placeholder="Ex: IPA"
+                        required
+                    />
+                    <div id="branch-suggestions-cadastro" class="absolute z-10 w-full bg-white border border-gray-300 rounded-lg shadow-lg mt-1 max-h-40 overflow-y-auto" style="display: none;"></div>
+                </div>
+                <div>
+                    <label for="cadastro-equipamento-date" class="block text-sm font-medium text-gray-700 mb-2">DATA</label>
+                    <input
+                        type="date"
+                        id="cadastro-equipamento-date"
+                        class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition duration-150 ease-in-out hover:border-blue-400"
+                        required
+                    />
+                </div>
+                <div class="md:col-span-3 flex justify-center mt-4">
+                    <button type="submit"
+                        class="w-full md:w-auto px-8 py-3 bg-gradient-to-r from-blue-600 to-indigo-700 text-white font-bold rounded-lg shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition duration-300 ease-in-out transform hover:scale-105">
+                        Cadastrar Equipamento
+                    </button>
+                </div>
+            </form>
+
+            <!-- Formulário de Upload em Massa -->
+            <div id="cadastro-equipamento-form-bulk" class="w-full max-w-2xl" style="display: none;">
+                <label for="bulk-upload-textarea" class="block text-sm font-medium text-gray-700 mb-2">Cole os dados aqui (uma linha por equipamento, separados por TAB: PLACA &lt;tab&gt; FILIAL &lt;tab&gt; DATA)</label>
+                <textarea id="bulk-upload-textarea" rows="10"
+                    class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition duration-150 ease-in-out hover:border-blue-400"
+                    placeholder="Ex:&#10;PLACA	ABC1234	FILIAL	IPA	DATA	15/07/2025&#10;PLACA	XYZ5678	FILIAL	SP	DATA	20/03/2023"></textarea>
+                <div class="flex justify-center mt-4">
+                    <button id="process-bulk-upload-btn"
+                        class="w-full md:w-auto px-8 py-3 bg-gradient-to-r from-green-600 to-emerald-700 text-white font-bold rounded-lg shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition duration-300 ease-in-out transform hover:scale-105">
+                        Processar Upload
+                    </button>
+                </div>
+                <div id="bulk-upload-results-display" class="mt-6 p-4 bg-gray-50 rounded-lg shadow-inner text-sm text-gray-700" style="display: none;">
+                    <!-- Resultados do upload em massa serão exibidos aqui -->
+                    <p class="text-center text-blue-600">Processando... <span id="bulk-upload-progress">0%</span></p>
+                </div>
+            </div>
+
+            <div id="cadastro-equipamento-message-display"></div>
+            <button id="cadastro-equipamento-back-btn"
+                class="mt-8 flex items-center px-6 py-2 bg-gray-100 text-gray-600 rounded-lg font-semibold hover:bg-gray-200 transition-colors duration-200 shadow-sm">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-left mr-2"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+                Voltar
+            </button>
+        </div>
+
+        <!-- Conteúdo da Seção: ALTERAÇÃO DE FILIAL -->
+        <div id="alteracao-filial-section" class="mt-8 p-6 bg-white rounded-xl shadow-md border border-gray-100 flex flex-col items-center" style="display: none;">
+            <h2 class="text-3xl font-bold text-gray-800 mb-6 text-center">Alteração de Filial</h2>
+            <p class="text-gray-600 text-center mb-8 text-lg leading-relaxed max-w-2xl">
+                Atualize a filial de um equipamento existente. A placa deve estar previamente cadastrada.
+            </p>
+            <form id="alteracao-filial-form" class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8 w-full max-w-2xl">
+                <div>
+                    <label for="alteracao-filial-plate" class="block text-sm font-medium text-gray-700 mb-2">PLACA</label>
+                    <input
+                        type="text"
+                        id="alteracao-filial-plate"
+                        class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition duration-150 ease-in-out hover:border-blue-400 uppercase"
+                        placeholder="Ex: ABC1234"
+                        required
+                    />
+                    <div id="plate-suggestions-alteracao" class="absolute z-10 w-full bg-white border border-gray-300 rounded-lg shadow-lg mt-1 max-h-40 overflow-y-auto" style="display: none;"></div>
+                </div>
+                <div>
+                    <label for="alteracao-filial-branch" class="block text-sm font-medium text-gray-700 mb-2">NOVA FILIAL (Sigla)</label>
+                    <input
+                        type="text"
+                        id="alteracao-filial-branch"
+                        class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition duration-150 ease-in-out hover:border-blue-400 uppercase"
+                        placeholder="Ex: SP"
+                        required
+                    />
+                    <div id="branch-suggestions-alteracao" class="absolute z-10 w-full bg-white border border-gray-300 rounded-lg shadow-lg mt-1 max-h-40 overflow-y-auto" style="display: none;"></div>
+                </div>
+                <div>
+                    <label for="alteracao-filial-date" class="block text-sm font-medium text-gray-700 mb-2">DATA DA ALTERAÇÃO</label>
+                    <input
+                        type="date"
+                        id="alteracao-filial-date"
+                        class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition duration-150 ease-in-out hover:border-blue-400"
+                        required
+                    />
+                </div>
+                <div class="md:col-span-3 flex justify-center mt-4">
+                    <button type="submit"
+                        class="w-full md:w-auto px-8 py-3 bg-gradient-to-r from-blue-600 to-indigo-700 text-white font-bold rounded-lg shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition duration-300 ease-in-out transform hover:scale-105">
+                        Alterar Filial
+                    </button>
+                </div>
+            </form>
+            <div id="alteracao-filial-message-display"></div>
+            <button id="alteracao-filial-back-btn"
+                class="mt-8 flex items-center px-6 py-2 bg-gray-100 text-gray-600 rounded-lg font-semibold hover:bg-gray-200 transition-colors duration-200 shadow-sm">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-left mr-2"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+                Voltar
+            </button>
+        </div>
+
+        <!-- Conteúdo da Seção: CADASTRO DE FILIAL -->
+        <div id="cadastro-filial-section" class="mt-8 p-6 bg-white rounded-xl shadow-md border border-gray-100 flex flex-col items-center" style="display: none;">
+            <h2 class="text-3xl font-bold text-gray-800 mb-6 text-center">Cadastro de Filial</h2>
+            <p class="text-gray-600 text-center mb-8 text-lg leading-relaxed max-w-2xl">
+                Registre novas filiais no sistema para que possam ser utilizadas no cadastro e alteração de equipamentos.
+            </p>
+            <form id="cadastro-filial-form" class="grid grid-cols-1 gap-6 mb-8 w-full max-w-md">
+                <div>
+                    <label for="cadastro-filial-name" class="block text-sm font-medium text-gray-700 mb-2">NOME DA FILIAL (Sigla)</label>
+                    <input
+                        type="text"
+                        id="cadastro-filial-name"
+                        class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition duration-150 ease-in-out hover:border-blue-400 uppercase"
+                        placeholder="Ex: ITA"
+                        required
+                    />
+                </div>
+                <div class="flex justify-center mt-4">
+                    <button type="submit"
+                        class="w-full md:w-auto px-8 py-3 bg-gradient-to-r from-blue-600 to-indigo-700 text-white font-bold rounded-lg shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition duration-300 ease-in-out transform hover:scale-105">
+                        Cadastrar Filial
+                    </button>
+                </div>
+            </form>
+            <div id="cadastro-filial-message-display"></div>
+            <button id="cadastro-filial-back-btn"
+                class="mt-8 flex items-center px-6 py-2 bg-gray-100 text-gray-600 rounded-lg font-semibold hover:bg-gray-200 transition-colors duration-200 shadow-sm">
+                <svg xmlns="http://www.w3.org/2000/24" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-left mr-2"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+                Voltar
+            </button>
+        </div>
+
+        <!-- Conteúdo da Seção: DASHBOARD -->
+        <div id="dashboard-section" class="mt-8 p-6 bg-white rounded-xl shadow-md border border-gray-100 flex flex-col items-center" style="display: none;">
+            <h2 class="text-3xl font-bold text-gray-800 mb-6 text-center">Dashboard de Equipamentos por Filial</h2>
+            <p class="text-gray-600 text-center mb-8 text-lg leading-relaxed max-w-2xl">
+                Selecione uma filial para visualizar a quantidade de equipamentos e suas respectivas placas.
+            </p>
+            <div class="w-full max-w-md mb-8">
+                <label for="dashboard-branch-select" class="block text-sm font-medium text-gray-700 mb-2">SELECIONE A FILIAL</label>
+                <select id="dashboard-branch-select"
+                    class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition duration-150 ease-in-out hover:border-blue-400">
+                    <option value="">-- Selecione uma Filial --</option>
+                    <!-- Opções de filiais serão carregadas aqui pelo JS -->
+                </select>
+            </div>
+            
+            <div id="dashboard-results" class="w-full max-w-2xl bg-gray-50 p-6 rounded-lg shadow-inner text-center" style="display: none;">
+                <h3 class="text-2xl font-semibold text-gray-800 mb-4"><span id="dashboard-filial-name"></span> - <span id="dashboard-equipment-count">0</span> Equipamentos</h3>
+                <ul id="dashboard-equipment-list" class="list-disc list-inside text-gray-700 text-left space-y-1">
+                    <!-- Placas serão listadas aqui -->
+                </ul>
+            </div>
+            <div id="dashboard-message-display"></div>
+            <button id="dashboard-back-btn"
+                class="mt-8 flex items-center px-6 py-2 bg-gray-100 text-gray-600 rounded-lg font-semibold hover:bg-gray-200 transition-colors duration-200 shadow-sm">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-left mr-2"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+                Voltar
+            </button>
+        </div>
+
+        <!-- Seção de Administração -->
+        <div id="admin-panel-section" class="mt-8 p-6 bg-white rounded-xl shadow-md border border-gray-100 flex flex-col items-center" style="display: none;">
+            <h2 class="text-3xl font-bold text-gray-800 mb-6 text-center">Painel de Administração</h2>
+            <p class="text-gray-600 text-center mb-8 text-lg leading-relaxed max-w-2xl">
+                Ferramentas administrativas para gerenciar usuários.
+            </p>
+            
+            <!-- Formulário para Criar Novo Usuário -->
+            <form id="create-user-form" class="w-full max-w-md p-6 bg-gray-50 rounded-lg shadow-inner mb-6">
+                <h3 class="text-2xl font-semibold text-gray-800 mb-4 text-center">Criar Novo Usuário</h3>
+                <div class="mb-4">
+                    <label for="new-user-username" class="block text-sm font-medium text-gray-700 mb-2">Nome de Usuário (Login)</label>
+                    <input
+                        type="text"
+                        id="new-user-username"
+                        class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition duration-150 ease-in-out hover:border-blue-400"
+                        placeholder="nome.usuario"
+                        required
+                    />
+                </div>
+                <div class="mb-4">
+                    <label for="new-user-display-name" class="block text-sm font-medium text-gray-700 mb-2">Nome de Exibição</label>
+                    <input
+                        type="text"
+                        id="new-user-display-name"
+                        class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition duration-150 ease-in-out hover:border-blue-400"
+                        placeholder="Nome para exibir (ex: João Silva)"
+                        required
+                    />
+                </div>
+                <div class="mb-6">
+                    <label for="new-user-password" class="block text-sm font-medium text-gray-700 mb-2">Senha</label>
+                    <input
+                        type="password"
+                        id="new-user-password"
+                        class="mt-1 block w-full px-4 py-2 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm transition duration-150 ease-in-out hover:border-blue-400"
+                        placeholder="********"
+                        required
+                    />
+                </div>
+                <div class="mb-6 flex items-center">
+                    <input type="checkbox" id="new-user-is-admin" class="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+                    <label for="new-user-is-admin" class="ml-2 block text-sm text-gray-900">É Administrador?</label>
+                </div>
+                <button type="submit"
+                    class="w-full px-8 py-3 bg-gradient-to-r from-green-600 to-emerald-700 text-white font-bold rounded-lg shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition duration-300 ease-in-out transform hover:scale-105">
+                    Criar Usuário
+                </button>
+                <div id="create-user-message-display"></div>
+            </form>
+
+            <!-- Formulário para Redefinir Senha de Usuário (Removido para simplicidade e segurança no cliente) -->
+            <div class="mt-8 p-4 bg-yellow-100 text-yellow-800 rounded-lg shadow-inner text-sm">
+                <p class="font-semibold">Nota:</p>
+                <p>A redefinição de senha para outros usuários não está disponível diretamente no cliente por razões de segurança. Geralmente, isso é feito através de um fluxo de e-mail de redefinição de senha ou por ferramentas de administração de backend.</p>
+            </div>
+
+            <button id="admin-panel-back-btn"
+                class="mt-8 flex items-center px-6 py-2 bg-gray-100 text-gray-600 rounded-lg font-semibold hover:bg-gray-200 transition-colors duration-200 shadow-sm">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-left mr-2"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+                Voltar
+            </button>
+        </div>
+
+        <!-- Conteúdo da Seção: URL Transformation (Placeholder) -->
+        <div id="url-transformation-section" class="mt-8 p-6 bg-white rounded-xl shadow-md border border-gray-100 flex flex-col items-center" style="display: none;">
+            <h2 class="text-3xl font-bold text-gray-800 mb-6 text-center">Transformação de URL</h2>
+            <p class="text-gray-600 text-center mb-8 text-lg leading-relaxed max-w-2xl">
+                Esta é a seção para a funcionalidade de transformação de URL. Você pode adicionar seu formulário e lógica aqui.
+            </p>
+            <div id="url-transformation-message-display"></div>
+            <button id="url-transformation-back-btn"
+                class="mt-8 flex items-center px-6 py-2 bg-gray-100 text-gray-600 rounded-lg font-semibold hover:bg-gray-200 transition-colors duration-200 shadow-sm">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-arrow-left mr-2"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+                Voltar
+            </button>
+        </div>
+
+
+    </div>
+
+    <!-- XLSX CDN (Carregamento assíncrono para evitar bloqueio) -->
+    <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js" async defer></script>
+</body>
+</html>
