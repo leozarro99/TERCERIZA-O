@@ -1,911 +1,928 @@
-import React, { useState, useEffect, createContext, useContext, useCallback } from 'react';
-import { createClient } from '@supabase/supabase-js';
-
-// --- Configuração Global do Supabase ---
-// Estes são os pontos de conexão para o seu projeto Supabase.
-// A chave 'anon' é segura para ser exposta no frontend.
-const SUPABASE_URL = 'https://jtikvjomzduvjrrrsfeg.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp0aWt2am9 DDUvjrrrsfegIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTMxMjU3NjcsImV4cCI6MjA2ODcwMTc2N30.2SCuJprMLJROxV6r6z1xKaVnnvy-q0Edwb0DrmcNeEg';
-
-// Inicializa o cliente Supabase uma única vez.
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
-// --- Contexto de Autenticação (AuthContext) ---
-// Este contexto permite que o estado do usuário logado e as funções de autenticação
-// sejam acessados por qualquer componente aninhado, sem a necessidade de "prop drilling".
-const AuthContext = createContext(null);
-
-/**
- * AuthProvider: Componente que gerencia o estado de autenticação do usuário
- * e fornece as funções de login/logout para o resto da aplicação.
- */
-const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null); // Armazena os dados do usuário logado
-  const [loading, setLoading] = useState(true); // Indica se a autenticação está carregando
-  const [authError, setAuthError] = useState(null); // Armazena mensagens de erro de autenticação
-
-  // useEffect para simular a verificação inicial de sessão.
-  // Em um ambiente de produção com autenticação Supabase completa,
-  // você usaria `supabase.auth.getSession()` ou `onAuthStateChange`.
-  useEffect(() => {
-    setLoading(false); // Define o carregamento como falso após a inicialização simulada
-  }, []);
-
-  /**
-   * Função assíncrona para tentar o login do usuário.
-   * Consulta a tabela 'usuarios' no Supabase para validar as credenciais.
-   * @param {string} email - O email fornecido pelo usuário.
-   * @param {string} password - A senha fornecida pelo usuário.
-   * @returns {Promise<{success: boolean, error?: string}>} Um objeto indicando sucesso ou falha com mensagem de erro.
-   */
-  const login = useCallback(async (email, password) => {
-    setLoading(true);
-    setAuthError(null); // Limpa erros anteriores para uma nova tentativa de login
-
-    try {
-      // Realiza a consulta no Supabase.
-      // ATENÇÃO: Em produção, senhas devem ser hashadas no banco de dados e comparadas com hashes.
-      const { data, error } = await supabase
-        .from('usuarios')
-        .select('*')
-        .eq('email', email)
-        .eq('senha', password)
-        .single(); // Espera um único resultado para as credenciais
-
-      if (error && error.code === 'PGRST116') {
-        // 'PGRST116' é o código de erro do PostgREST para "nenhuma linha encontrada",
-        // o que indica que as credenciais não correspondem a nenhum usuário.
-        throw new Error('Credenciais inválidas. Verifique seu email e senha.');
-      } else if (error) {
-        // Captura outros erros que podem ocorrer durante a consulta ao Supabase.
-        throw error;
-      }
-
-      if (data) {
-        setUser(data); // Define o usuário logado no estado
-        return { success: true };
-      }
-      return { success: false, error: 'Credenciais inválidas.' };
-
-    } catch (error) {
-      console.error('Erro no login:', error.message);
-      setAuthError(error.message); // Define a mensagem de erro para exibição na UI
-      return { success: false, error: error.message };
-    } finally {
-      setLoading(false); // Finaliza o estado de carregamento
-    }
-  }, []); // Dependências vazias, pois a função não depende de props ou estados externos
-
-  /**
-   * Função para realizar o logout do usuário.
-   * Limpa o estado do usuário e quaisquer erros de autenticação.
-   */
-  const logout = useCallback(() => {
-    setUser(null); // Limpa os dados do usuário
-    setAuthError(null); // Limpa erros
-    // Em uma aplicação real com Supabase Auth, você chamaria `supabase.auth.signOut()` aqui.
-  }, []);
-
-  // O valor fornecido pelo contexto, incluindo o usuário, funções e estados de carregamento/erro.
-  const authContextValue = { user, login, logout, loading, authError };
-
-  return (
-    <AuthContext.Provider value={authContextValue}>
-      {children}
-    </AuthContext.Provider>
-  );
-};
-
-/**
- * useAuth: Hook personalizado para consumir o AuthContext de forma conveniente.
- * Simplifica o acesso aos dados e funções de autenticação em qualquer componente funcional.
- */
-const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (!context) {
-    // Garante que o hook seja usado dentro de um AuthProvider.
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
-};
-
-// --- Componentes Reutilizáveis de UI ---
-
-/**
- * LoadingSpinner: Componente simples para exibir um indicador de carregamento.
- */
-const LoadingSpinner = ({ message = 'Carregando...' }) => (
-  <div className="flex flex-col items-center justify-center p-4">
-    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mb-2"></div>
-    <p className="text-gray-700">{message}</p>
-  </div>
-);
-
-/**
- * ErrorMessage: Componente para exibir mensagens de erro.
- */
-const ErrorMessage = ({ message }) => (
-  <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
-    <strong className="font-bold">Erro!</strong>
-    <span className="block sm:inline ml-2">{message}</span>
-  </div>
-);
-
-/**
- * SuccessMessage: Componente para exibir mensagens de sucesso.
- */
-const SuccessMessage = ({ message }) => (
-  <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative" role="alert">
-    <strong className="font-bold">Sucesso!</strong>
-    <span className="block sm:inline ml-2">{message}</span>
-  </div>
-);
-
-/**
- * MenuButton: Componente para os botões de navegação no menu principal.
- * Inclui ícone, texto e estilo consistente.
- */
-const MenuButton = ({ children, onClick, iconClass }) => (
-  <button
-    onClick={onClick}
-    className="flex flex-col items-center justify-center p-6 bg-blue-500 text-white rounded-lg shadow-md hover:bg-blue-600 transform hover:scale-105 transition duration-300 ease-in-out text-lg font-semibold"
-  >
-    {iconClass && <i className={`${iconClass} text-3xl mb-2`}></i>}
-    {children}
-  </button>
-);
-
-// --- Componente: Tela de Login ---
-const LoginScreen = ({ setScreen }) => {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const { login, loading, authError } = useAuth(); // Acessa o estado de autenticação
-
-  const handleSubmit = async (e) => {
-    e.preventDefault(); // Previne o comportamento padrão de recarregar a página
-    const result = await login(email, password);
-    if (result.success) {
-      setScreen('mainMenu'); // Navega para o menu principal em caso de sucesso
-    }
-    // A mensagem de erro será exibida via `authError` no componente.
-  };
-
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4">
-      <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-md">
-        <h2 className="text-3xl font-bold text-center text-gray-800 mb-8">Login</h2>
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div>
-            <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-            <input
-              type="email"
-              id="email"
-              className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 transition duration-200 ease-in-out"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-            />
-          </div>
-          <div>
-            <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">Senha</label>
-            <input
-              type="password"
-              id="password"
-              className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 transition duration-200 ease-in-out"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
-          </div>
-          {authError && <ErrorMessage message={authError} />} {/* Exibe erro de autenticação */}
-          <button
-            type="submit"
-            className="w-full bg-blue-600 text-white py-3 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition duration-300 ease-in-out font-semibold text-lg"
-            disabled={loading} // Desabilita o botão durante o carregamento do login
-          >
-            {loading ? 'Entrando...' : 'Entrar'}
-          </button>
-        </form>
-      </div>
-    </div>
-  );
-};
-
-// --- Componente: Menu Principal ---
-const MainMenu = ({ setScreen }) => {
-  const { user, logout } = useAuth(); // Acessa o usuário logado e a função de logout
-
-  return (
-    <div className="min-h-screen bg-gray-100 flex flex-col items-center justify-center p-4">
-      <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-2xl text-center">
-        <h2 className="text-3xl font-bold text-gray-800 mb-6">Bem-vindo, {user?.nome || 'Usuário'}!</h2>
-        <p className="text-gray-600 mb-8">Selecione uma opção para continuar:</p>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Botões de navegação para as diferentes telas */}
-          <MenuButton onClick={() => setScreen('cadastroFiliais')} iconClass="fas fa-building">
-            Cadastro de Filiais
-          </MenuButton>
-          <MenuButton onClick={() => setScreen('cadastroEquipamentos')} iconClass="fas fa-truck-moving">
-            Cadastro de Equipamentos
-          </MenuButton>
-          <MenuButton onClick={() => setScreen('trocaFilialFixa')} iconClass="fas fa-exchange-alt">
-            Troca de Filial Fixa
-          </MenuButton>
-          <MenuButton onClick={() => setScreen('dashboard')} iconClass="fas fa-chart-bar">
-            Dashboard
-          </MenuButton>
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gerenciamento de Filiais e Equipamentos</title>
+    <!-- Tailwind CSS CDN - Para estilização rápida e responsiva -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome para Ícones - Usado para os ícones nos botões do menu -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <!-- Google Fonts - Inter - Para uma tipografia moderna e legível -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        /* Estilo base para a fonte Inter em todo o corpo do documento */
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        /* Estilo para garantir que o contêiner principal do aplicativo ocupe a altura total da tela
+           e centralize o conteúdo, com um fundo cinza claro */
+        #app-root {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem; /* Espaçamento interno */
+            background-color: #f3f4f6; /* Cor de fundo (equivalente a Tailwind bg-gray-100) */
+        }
+    </style>
+</head>
+<body>
+    <!-- Contêiner raiz do aplicativo onde todo o conteúdo será dinamicamente injetado pelo JavaScript -->
+    <div id="app-root">
+        <!-- O conteúdo específico de cada tela (login, menu, formulários) será renderizado aqui -->
+        <div id="screen-container" class="bg-white p-8 rounded-lg shadow-xl w-full max-w-md">
+            <!-- Conteúdo dinâmico será carregado aqui -->
         </div>
-        <button
-          onClick={() => {
-            logout(); // Executa o logout
-            setScreen('login'); // Retorna para a tela de login
-          }}
-          className="mt-10 px-6 py-3 bg-red-600 text-white rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition duration-300 ease-in-out font-semibold"
-        >
-          Sair
-        </button>
-      </div>
     </div>
-  );
-};
 
-// --- Componente: Cadastro de Filiais ---
-const CadastroFiliaisScreen = ({ setScreen }) => {
-  const [nomeFilial, setNomeFilial] = useState('');
-  const [responsavelId, setResponsavelId] = useState('');
-  const [usuarios, setUsuarios] = useState([]); // Lista de usuários para o dropdown de responsáveis
-  const [message, setMessage] = useState(''); // Mensagens de feedback (sucesso/erro)
-  const [loading, setLoading] = useState(false); // Indica se o formulário está sendo enviado
-  const [dataLoading, setDataLoading] = useState(true); // Indica se os dados iniciais (usuários) estão carregando
+    <!-- Script principal do aplicativo, usando type="module" para importações e escopo de módulo -->
+    <script type="module">
+        // Importa a função createClient do SDK do Supabase para JavaScript
+        import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm';
 
-  // useEffect para buscar a lista de usuários quando o componente é montado.
-  useEffect(() => {
-    const fetchUsuarios = async () => {
-      setDataLoading(true); // Inicia o carregamento dos dados
-      setMessage(''); // Limpa mensagens anteriores
-      try {
-        const { data, error } = await supabase.from('usuarios').select('id, nome');
-        if (error) {
-          throw error;
+        // --- Configuração do Supabase ---
+        // IMPORTANTE: Substitua estes valores pelo URL e chave ANÔNIMA (anon key) do SEU projeto Supabase.
+        // Você pode encontrar estas credenciais no painel do Supabase em 'Project Settings' -> 'API'.
+        // Estas chaves são essenciais para que o aplicativo se conecte ao seu banco de dados.
+        const SUPABASE_URL = 'https://jtikvjomzduvjrrrsfeg.supabase.co'; // Substitua pelo seu Supabase URL
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp0aWt2am9 DDUvjrrrsfegIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTMxMjU3NjcsImV4cCI6MjA2ODcwMTc2N30.2SCuJprMLJROxV6r6z1xKaVnnvy-q0Edwb0DrmcNeEg'; // Substitua pela sua Supabase Anon Key
+
+        // Inicializa o cliente Supabase com as credenciais fornecidas.
+        const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        // --- Variáveis de Estado Global ---
+        // Estas variáveis simulam o conceito de "estado" em frameworks como React.
+        // Elas controlam o que é exibido na tela e os dados da sessão.
+        let currentUser = null; // Armazena os dados do usuário atualmente logado (ex: { id, nome, email })
+        let currentScreen = 'login'; // Controla qual tela do aplicativo está ativa ('login', 'mainMenu', etc.)
+        let authError = null; // Armazena qualquer mensagem de erro relacionada à autenticação
+        let appLoading = true; // Indica se o aplicativo está em um estado de carregamento inicial
+
+        // --- Funções Auxiliares de Manipulação de UI (DOM) ---
+
+        /**
+         * Atualiza o conteúdo HTML dentro do contêiner principal do aplicativo (`#screen-container`).
+         * Esta função é central para a navegação entre as telas do aplicativo.
+         * @param {string} htmlContent - A string HTML que será inserida no contêiner.
+         * @param {string} maxWidthClass - Uma classe Tailwind CSS para controlar a largura máxima do contêiner.
+         */
+        function updateScreenContent(htmlContent, maxWidthClass = 'max-w-md') {
+            const screenContainer = document.getElementById('screen-container');
+            if (screenContainer) {
+                screenContainer.innerHTML = htmlContent; // Define o novo HTML
+                // Remove quaisquer classes de largura máxima existentes e adiciona a nova
+                screenContainer.className = screenContainer.className.split(' ').filter(c => !c.startsWith('max-w-')).join(' ');
+                screenContainer.classList.add(maxWidthClass);
+            }
         }
-        setUsuarios(data); // Atualiza o estado com a lista de usuários
-      } catch (error) {
-        console.error('Erro ao buscar usuários:', error.message);
-        setMessage('Erro ao carregar responsáveis: ' + error.message);
-      } finally {
-        setDataLoading(false); // Finaliza o carregamento dos dados
-      }
-    };
-    fetchUsuarios();
-  }, []); // Array de dependências vazio para executar apenas uma vez
 
-  /**
-   * Lida com o envio do formulário de cadastro de filial.
-   * Insere um novo registro na tabela 'filiais' do Supabase.
-   */
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setMessage(''); // Limpa mensagens anteriores
-    setLoading(true); // Inicia o carregamento do formulário
-
-    try {
-      const { error } = await supabase
-        .from('filiais')
-        .insert([{ nome_filial: nomeFilial, responsavel_id: responsavelId }]);
-
-      if (error) {
-        throw error;
-      }
-      setMessage('Filial cadastrada com sucesso!');
-      setNomeFilial(''); // Limpa o campo de nome da filial
-      setResponsavelId(''); // Reseta a seleção do responsável
-    } catch (error) {
-      console.error('Erro ao cadastrar filial:', error.message);
-      setMessage('Erro ao cadastrar filial: ' + error.message);
-    } finally {
-      setLoading(false); // Finaliza o carregamento do formulário
-    }
-  };
-
-  return (
-    <div className="min-h-screen bg-gray-100 flex flex-col items-center justify-center p-4">
-      <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-md">
-        <h2 className="text-3xl font-bold text-center text-gray-800 mb-8">Cadastro de Filiais</h2>
-        {dataLoading ? (
-          <LoadingSpinner message="Carregando responsáveis..." />
-        ) : (
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div>
-              <label htmlFor="nomeFilial" className="block text-sm font-medium text-gray-700 mb-1">Nome da Filial</label>
-              <input
-                type="text"
-                id="nomeFilial"
-                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 transition duration-200 ease-in-out"
-                value={nomeFilial}
-                onChange={(e) => setNomeFilial(e.target.value)}
-                required
-              />
-            </div>
-            <div>
-              <label htmlFor="responsavel" className="block text-sm font-medium text-gray-700 mb-1">Responsável</label>
-              <select
-                id="responsavel"
-                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 transition duration-200 ease-in-out"
-                value={responsavelId}
-                onChange={(e) => setResponsavelId(e.target.value)}
-                required
-                // Desabilita o select se estiver carregando ou se não houver usuários disponíveis
-                disabled={loading || usuarios.length === 0}
-              >
-                <option value="">Selecione um responsável</option>
-                {usuarios.map((user) => (
-                  <option key={user.id} value={user.id}>
-                    {user.nome}
-                  </option>
-                ))}
-              </select>
-              {usuarios.length === 0 && !dataLoading && (
-                <p className="text-red-500 text-xs mt-1">Nenhum responsável encontrado. Cadastre usuários primeiro.</p>
-              )}
-            </div>
-            {message && (message.includes('sucesso') ? <SuccessMessage message={message} /> : <ErrorMessage message={message} />)}
-            <button
-              type="submit"
-              className="w-full bg-blue-600 text-white py-3 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition duration-300 ease-in-out font-semibold text-lg"
-              // Desabilita o botão se estiver carregando ou se não houver responsáveis para associar
-              disabled={loading || usuarios.length === 0}
-            >
-              {loading ? 'Cadastrando...' : 'Cadastrar Filial'}
-            </button>
-          </form>
-        )}
-        <button
-          onClick={() => setScreen('mainMenu')}
-          className="mt-6 w-full px-6 py-3 bg-gray-500 text-white rounded-md hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition duration-300 ease-in-out font-semibold"
-        >
-          Voltar ao Menu
-        </button>
-      </div>
-    </div>
-  );
-};
-
-// --- Componente: Cadastro de Equipamentos ---
-const CadastroEquipamentosScreen = ({ setScreen }) => {
-  const [placa, setPlaca] = useState('');
-  const [tipoEquipamento, setTipoEquipamento] = useState('');
-  const [message, setMessage] = useState('');
-  const [loading, setLoading] = useState(false);
-
-  // Array de strings com os tipos de equipamento permitidos para validação.
-  const tiposPermitidos = ['Bomba Lança', 'Bomba Estacionária', 'Betoneira'];
-
-  /**
-   * Lida com o envio do formulário de cadastro de equipamento.
-   * Insere um novo registro na tabela 'equipamentos' do Supabase.
-   */
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setMessage(''); // Limpa mensagens anteriores
-    setLoading(true); // Inicia o carregamento do formulário
-
-    // Validação básica do tipo de equipamento selecionado.
-    if (!tiposPermitidos.includes(tipoEquipamento)) {
-      setMessage('Tipo de equipamento inválido. Por favor, selecione um dos tipos permitidos.');
-      setLoading(false);
-      return; // Interrompe a execução se a validação falhar
-    }
-
-    try {
-      const { error } = await supabase
-        .from('equipamentos')
-        .insert([{ placa: placa, tipo_equipamento: tipoEquipamento }]);
-
-      if (error) {
-        throw error;
-      }
-      setMessage('Equipamento cadastrado com sucesso!');
-      setPlaca(''); // Limpa o campo da placa
-      setTipoEquipamento(''); // Reseta a seleção do tipo de equipamento
-    } catch (error) {
-      console.error('Erro ao cadastrar equipamento:', error.message);
-      setMessage('Erro ao cadastrar equipamento: ' + error.message);
-    } finally {
-      setLoading(false); // Finaliza o carregamento do formulário
-    }
-  };
-
-  return (
-    <div className="min-h-screen bg-gray-100 flex flex-col items-center justify-center p-4">
-      <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-md">
-        <h2 className="text-3xl font-bold text-center text-gray-800 mb-8">Cadastro de Equipamentos</h2>
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div>
-            <label htmlFor="placa" className="block text-sm font-medium text-gray-700 mb-1">Número da Placa</label>
-            <input
-              type="text"
-              id="placa"
-              className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 transition duration-200 ease-in-out"
-              value={placa}
-              onChange={(e) => setPlaca(e.target.value)}
-              required
-            />
-          </div>
-          <div>
-            <label htmlFor="tipoEquipamento" className="block text-sm font-medium text-gray-700 mb-1">Tipo de Equipamento</label>
-            <select
-              id="tipoEquipamento"
-              className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 transition duration-200 ease-in-out"
-              value={tipoEquipamento}
-              onChange={(e) => setTipoEquipamento(e.target.value)}
-              required
-              disabled={loading} // Desabilita o select durante o envio do formulário
-            >
-              <option value="">Selecione o tipo</option>
-              {tiposPermitidos.map((tipo) => (
-                <option key={tipo} value={tipo}>
-                  {tipo}
-                </option>
-              ))}
-            </select>
-          </div>
-          {message && (message.includes('sucesso') ? <SuccessMessage message={message} /> : <ErrorMessage message={message} />)}
-          <button
-            type="submit"
-            className="w-full bg-blue-600 text-white py-3 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition duration-300 ease-in-out font-semibold text-lg"
-            disabled={loading} // Desabilita o botão durante o envio do formulário
-          >
-            {loading ? 'Cadastrando...' : 'Cadastrar Equipamento'}
-          </button>
-        </form>
-        <button
-          onClick={() => setScreen('mainMenu')}
-          className="mt-6 w-full px-6 py-3 bg-gray-500 text-white rounded-md hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition duration-300 ease-in-out font-semibold"
-        >
-          Voltar ao Menu
-        </button>
-      </div>
-    </div>
-  );
-};
-
-// --- Componente: Troca de Filial Fixa ---
-const TrocaFilialFixaScreen = ({ setScreen }) => {
-  const [equipamentoId, setEquipamentoId] = useState('');
-  const [novaFilialId, setNovaFilialId] = useState('');
-  const [dataExecucao, setDataExecucao] = useState('');
-  const [equipamentos, setEquipamentos] = useState([]); // Lista de equipamentos para o dropdown
-  const [filiais, setFiliais] = useState([]); // Lista de filiais para o dropdown
-  const [message, setMessage] = useState('');
-  const [loading, setLoading] = useState(false); // Indica se o formulário está sendo enviado
-  const [dataLoading, setDataLoading] = useState(true); // Indica se os dados iniciais (equipamentos/filiais) estão carregando
-
-  // useEffect para buscar a lista de equipamentos e filiais quando o componente é montado.
-  useEffect(() => {
-    const fetchData = async () => {
-      setDataLoading(true); // Inicia o carregamento dos dados
-      setMessage(''); // Limpa mensagens anteriores
-      try {
-        const { data: eqData, error: eqError } = await supabase.from('equipamentos').select('id, placa');
-        const { data: filData, error: filError } = await supabase.from('filiais').select('id, nome_filial');
-
-        if (eqError) throw eqError;
-        setEquipamentos(eqData); // Atualiza o estado com a lista de equipamentos
-
-        if (filError) throw filError;
-        setFiliais(filData); // Atualiza o estado com a lista de filiais
-      } catch (error) {
-        console.error('Erro ao buscar dados:', error.message);
-        setMessage('Erro ao carregar equipamentos ou filiais: ' + error.message);
-      } finally {
-        setDataLoading(false); // Finaliza o carregamento dos dados
-      }
-    };
-    fetchData();
-  }, []); // Array de dependências vazio para executar apenas uma vez
-
-  /**
-   * Lida com o envio do formulário de troca de filial.
-   * Atualiza o histórico de filiais na tabela 'historico_filiais_equipamentos'.
-   */
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setMessage(''); // Limpa mensagens anteriores
-    setLoading(true); // Inicia o carregamento do formulário
-
-    try {
-      // Passo 1: Encontrar o registro de histórico ATUAL do equipamento (onde data_fim é NULL).
-      const { data: currentHistory, error: currentHistoryError } = await supabase
-        .from('historico_filiais_equipamentos')
-        .select('*')
-        .eq('equipamento_id', equipamentoId)
-        .is('data_fim', null) // Procura o registro ativo
-        .single(); // Espera um único resultado
-
-      if (currentHistoryError && currentHistoryError.code !== 'PGRST116') {
-        // 'PGRST116' significa "nenhuma linha encontrada", o que é esperado se não houver histórico ativo.
-        // Outros erros são lançados.
-        throw new Error('Erro ao buscar histórico atual: ' + currentHistoryError.message);
-      }
-
-      // Passo 2: Se um histórico ATUAL for encontrado, encerrá-lo (definir data_fim).
-      if (currentHistory) {
-        const dataFimAntiga = new Date(dataExecucao);
-        // Define a data de fim como o dia anterior à data de execução da nova filial.
-        dataFimAntiga.setDate(dataFimAntiga.getDate() - 1);
-
-        const { error: updateError } = await supabase
-          .from('historico_filiais_equipamentos')
-          .update({ data_fim: dataFimAntiga.toISOString().split('T')[0] }) // Formata para 'YYYY-MM-DD'
-          .eq('id', currentHistory.id); // Atualiza o registro específico
-
-        if (updateError) {
-          throw new Error('Erro ao encerrar filial antiga: ' + updateError.message);
+        /**
+         * Exibe um spinner de carregamento com uma mensagem opcional.
+         * Usado para indicar que uma operação assíncrona está em andamento.
+         * @param {string} message - A mensagem a ser exibida abaixo do spinner.
+         */
+        function showLoadingSpinner(message = 'Carregando...') {
+            updateScreenContent(`
+                <div class="flex flex-col items-center justify-center p-4">
+                    <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mb-2"></div>
+                    <p class="text-gray-700">${message}</p>
+                </div>
+            `);
         }
-      }
 
-      // Passo 3: Inserir o NOVO registro de histórico para a nova filial.
-      const { error: insertError } = await supabase
-        .from('historico_filiais_equipamentos')
-        .insert([
-          {
-            equipamento_id: equipamentoId,
-            filial_id: novaFilialId,
-            data_inicio: dataExecucao,
-            data_fim: null, // A nova filial é a atual, então data_fim é NULL
-          },
-        ]);
-
-      if (insertError) {
-        throw new Error('Erro ao registrar nova filial: ' + insertError.message);
-      }
-
-      setMessage('Troca de filial registrada com sucesso!');
-      setEquipamentoId(''); // Limpa a seleção do equipamento
-      setNovaFilialId(''); // Limpa a seleção da nova filial
-      setDataExecucao(''); // Limpa a data de execução
-    } catch (error) {
-      console.error('Erro na troca de filial:', error.message);
-      setMessage('Erro na troca de filial: ' + error.message);
-    } finally {
-      setLoading(false); // Finaliza o carregamento do formulário
-    }
-  };
-
-  return (
-    <div className="min-h-screen bg-gray-100 flex flex-col items-center justify-center p-4">
-      <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-md">
-        <h2 className="text-3xl font-bold text-center text-gray-800 mb-8">Troca de Filial Fixa</h2>
-        {dataLoading ? (
-          <LoadingSpinner message="Carregando equipamentos e filiais..." />
-        ) : (
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div>
-              <label htmlFor="equipamento" className="block text-sm font-medium text-gray-700 mb-1">Selecionar Equipamento</label>
-              <select
-                id="equipamento"
-                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 transition duration-200 ease-in-out"
-                value={equipamentoId}
-                onChange={(e) => setEquipamentoId(e.target.value)}
-                required
-                disabled={loading || equipamentos.length === 0}
-              >
-                <option value="">Selecione uma placa</option>
-                {equipamentos.map((eq) => (
-                  <option key={eq.id} value={eq.id}>
-                    {eq.placa}
-                  </option>
-                ))}
-              </select>
-              {equipamentos.length === 0 && !dataLoading && (
-                <p className="text-red-500 text-xs mt-1">Nenhum equipamento encontrado. Cadastre equipamentos primeiro.</p>
-              )}
-            </div>
-            <div>
-              <label htmlFor="novaFilial" className="block text-sm font-medium text-gray-700 mb-1">Nova Filial Fixa</label>
-              <select
-                id="novaFilial"
-                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 transition duration-200 ease-in-out"
-                value={novaFilialId}
-                onChange={(e) => setNovaFilialId(e.target.value)}
-                required
-                disabled={loading || filiais.length === 0}
-              >
-                <option value="">Selecione a nova filial</option>
-                {filiais.map((filial) => (
-                  <option key={filial.id} value={filial.id}>
-                    {filial.nome_filial}
-                  </option>
-                ))}
-              </select>
-              {filiais.length === 0 && !dataLoading && (
-                <p className="text-red-500 text-xs mt-1">Nenhuma filial encontrada. Cadastre filiais primeiro.</p>
-              )}
-            </div>
-            <div>
-              <label htmlFor="dataExecucao" className="block text-sm font-medium text-gray-700 mb-1">Data de Execução</label>
-              <input
-                type="date"
-                id="dataExecucao"
-                className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 transition duration-200 ease-in-out"
-                value={dataExecucao}
-                onChange={(e) => setDataExecucao(e.target.value)}
-                required
-                disabled={loading}
-              />
-            </div>
-            {message && (message.includes('sucesso') ? <SuccessMessage message={message} /> : <ErrorMessage message={message} />)}
-            <button
-              type="submit"
-              className="w-full bg-blue-600 text-white py-3 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition duration-300 ease-in-out font-semibold text-lg"
-              disabled={loading || equipamentos.length === 0 || filiais.length === 0}
-            >
-              {loading ? 'Registrando...' : 'Registrar Troca'}
-            </button>
-          </form>
-        )}
-        <button
-          onClick={() => setScreen('mainMenu')}
-          className="mt-6 w-full px-6 py-3 bg-gray-500 text-white rounded-md hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition duration-300 ease-in-out font-semibold"
-        >
-          Voltar ao Menu
-        </button>
-      </div>
-    </div>
-  );
-};
-
-// --- Componente: Dashboard ---
-const DashboardScreen = ({ setScreen }) => {
-  const [responsavelId, setResponsavelId] = useState('');
-  const [usuarios, setUsuarios] = useState([]); // Lista de usuários para o filtro de responsável
-  const [filiaisDoResponsavel, setFiliaisDoResponsavel] = useState([]); // Filiais gerenciadas pelo responsável selecionado
-  const [equipamentosAtivos, setEquipamentosAtivos] = useState({}); // Objeto para armazenar equipamentos por filial: { filialId: [equipamentos] }
-  const [loading, setLoading] = useState(false); // Indica se os dados do dashboard estão carregando
-  const [message, setMessage] = useState('');
-  const [dataLoading, setDataLoading] = useState(true); // Indica se os dados iniciais (usuários) estão carregando
-
-  // useEffect para buscar a lista de usuários quando o componente é montado.
-  useEffect(() => {
-    const fetchUsuarios = async () => {
-      setDataLoading(true);
-      setMessage('');
-      try {
-        const { data, error } = await supabase.from('usuarios').select('id, nome');
-        if (error) {
-          throw error;
+        /**
+         * Gera uma string HTML para exibir uma mensagem de erro formatada.
+         * @param {string} message - A mensagem de erro a ser exibida.
+         * @returns {string} O HTML da mensagem de erro.
+         */
+        function showErrorMessage(message) {
+            return `
+                <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
+                    <strong class="font-bold">Erro!</strong>
+                    <span class="block sm:inline ml-2">${message}</span>
+                </div>
+            `;
         }
-        setUsuarios(data);
-      } catch (error) {
-        console.error('Erro ao buscar usuários:', error.message);
-        setMessage('Erro ao carregar responsáveis: ' + error.message);
-      } finally {
-        setDataLoading(false);
-      }
-    };
-    fetchUsuarios();
-  }, []);
 
-  // useEffect para buscar os dados do dashboard sempre que o responsável selecionado mudar.
-  useEffect(() => {
-    const fetchDashboardData = async () => {
-      // Limpa os dados se nenhum responsável for selecionado
-      if (!responsavelId) {
-        setFiliaisDoResponsavel([]);
-        setEquipamentosAtivos({});
-        return;
-      }
-
-      setLoading(true); // Inicia o carregamento dos dados do dashboard
-      setMessage(''); // Limpa mensagens anteriores
-      setFiliaisDoResponsavel([]); // Limpa filiais anteriores
-      setEquipamentosAtivos({}); // Limpa equipamentos anteriores
-
-      try {
-        // 1. Buscar filiais associadas ao responsável selecionado.
-        const { data: filiaisData, error: filiaisError } = await supabase
-          .from('filiais')
-          .select('id, nome_filial')
-          .eq('responsavel_id', responsavelId); // Filtra as filiais pelo ID do responsável
-
-        if (filiaisError) throw filiaisError;
-        setFiliaisDoResponsavel(filiaisData); // Atualiza o estado com as filiais encontradas
-
-        // 2. Para cada filial, buscar os equipamentos ativos associados.
-        const equipamentosByFilial = {};
-        for (const filial of filiaisData) {
-          const { data: historicoData, error: historicoError } = await supabase
-            .from('historico_filiais_equipamentos')
-            .select(`
-              *,
-              equipamentos (placa, tipo_equipamento) // Faz um JOIN implícito para obter dados do equipamento
-            `)
-            .eq('filial_id', filial.id)
-            .is('data_fim', null); // Condição para equipamentos que estão atualmente ativos (data_fim é NULL)
-
-          if (historicoError) {
-            console.error(`Erro ao buscar equipamentos para filial ${filial.nome_filial}:`, historicoError.message);
-            equipamentosByFilial[filial.id] = []; // Em caso de erro, define como array vazio
-            continue;
-          }
-
-          // Mapeia os dados do histórico para um formato mais fácil de renderizar,
-          // garantindo que as propriedades de 'equipamentos' existam.
-          const activeEquipments = historicoData.map(item => ({
-            id: item.equipamento_id,
-            placa: item.equipamentos?.placa || 'N/A', // Usa 'N/A' se a placa não for encontrada
-            tipo_equipamento: item.equipamentos?.tipo_equipamento || 'N/A', // Usa 'N/A' se o tipo não for encontrado
-            data_inicio: item.data_inicio,
-          }));
-          equipamentosByFilial[filial.id] = activeEquipments;
+        /**
+         * Gera uma string HTML para exibir uma mensagem de sucesso formatada.
+         * @param {string} message - A mensagem de sucesso a ser exibida.
+         * @returns {string} O HTML da mensagem de sucesso.
+         */
+        function showSuccessMessage(message) {
+            return `
+                <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded relative" role="alert">
+                    <strong class="font-bold">Sucesso!</strong>
+                    <span class="block sm:inline ml-2">${message}</span>
+                </div>
+            `;
         }
-        setEquipamentosAtivos(equipamentosByFilial); // Atualiza o estado com os equipamentos por filial
 
-      } catch (error) {
-        console.error('Erro no dashboard:', error.message);
-        setMessage('Erro ao carregar dados do dashboard: ' + error.message);
-      } finally {
-        setLoading(false); // Finaliza o carregamento dos dados do dashboard
-      }
-    };
+        /**
+         * Altera a tela atual do aplicativo e aciona uma nova renderização.
+         * @param {string} screenName - O nome da tela para a qual o aplicativo deve navegar.
+         */
+        function navigateTo(screenName) {
+            currentScreen = screenName; // Atualiza a variável de estado global da tela
+            renderScreen(); // Chama a função que redesenha a UI com base na nova tela
+        }
 
-    fetchDashboardData();
-  }, [responsavelId]); // Este efeito é re-executado sempre que 'responsavelId' muda
+        // --- Funções de Autenticação ---
 
-  return (
-    <div className="min-h-screen bg-gray-100 p-4">
-      <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-4xl mx-auto">
-        <h2 className="text-3xl font-bold text-center text-gray-800 mb-8">Dashboard de Equipamentos</h2>
-        <div className="mb-6">
-          <label htmlFor="responsavel" className="block text-sm font-medium text-gray-700 mb-1">Filtrar por Responsável</label>
-          <select
-            id="responsavel"
-            className="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 transition duration-200 ease-in-out"
-            value={responsavelId}
-            onChange={(e) => setResponsavelId(e.target.value)}
-            disabled={loading || dataLoading || usuarios.length === 0} // Desabilita se estiver carregando ou sem usuários
-          >
-            <option value="">Selecione um responsável</option>
-            {usuarios.map((user) => (
-              <option key={user.id} value={user.id}>
-                {user.nome}
-              </option>
-            ))}
-          </select>
-          {usuarios.length === 0 && !dataLoading && (
-            <p className="text-red-500 text-xs mt-1">Nenhum responsável encontrado. Cadastre usuários primeiro.</p>
-          )}
-        </div>
+        /**
+         * Tenta realizar o login de um usuário consultando a tabela 'usuarios' no Supabase.
+         * @param {string} email - O email fornecido pelo usuário.
+         * @param {string} password - A senha fornecida pelo usuário.
+         * @returns {Promise<boolean>} Retorna `true` se o login for bem-sucedido, `false` caso contrário.
+         */
+        async function loginUser(email, password) {
+            appLoading = true; // Define o estado de carregamento para mostrar feedback na UI
+            authError = null; // Limpa qualquer erro de autenticação anterior
+            renderScreen(); // Re-renderiza para mostrar o spinner de carregamento
 
-        {message && <ErrorMessage message={message} />}
-        {loading && <LoadingSpinner message="Carregando dados do dashboard..." />}
+            try {
+                // Realiza uma consulta ao Supabase para encontrar um usuário com o email e senha fornecidos.
+                // ATENÇÃO: Em um ambiente de produção, senhas NUNCA devem ser armazenadas em texto puro.
+                // Elas devem ser hashadas no banco de dados, e a comparação deve ser feita com hashes.
+                const { data, error } = await supabase
+                    .from('usuarios')
+                    .select('*') // Seleciona todas as colunas do usuário
+                    .eq('email', email) // Filtra pelo email
+                    .eq('senha', password) // Filtra pela senha (não seguro para produção!)
+                    .single(); // Espera que a consulta retorne no máximo um registro
 
-        {!loading && responsavelId && filiaisDoResponsavel.length === 0 && (
-          <p className="text-center text-gray-600">Nenhuma filial encontrada para este responsável.</p>
-        )}
+                // Verifica se houve um erro do Supabase ou se nenhuma linha foi encontrada (credenciais inválidas)
+                if (error && error.code === 'PGRST116') {
+                    // 'PGRST116' é um código de erro do PostgREST (parte do Supabase) que significa "nenhuma linha encontrada".
+                    throw new Error('Credenciais inválidas. Verifique seu email e senha.');
+                } else if (error) {
+                    // Lança outros tipos de erro que podem vir do Supabase.
+                    throw error;
+                }
 
-        {!loading && responsavelId && filiaisDoResponsavel.length > 0 && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filiaisDoResponsavel.map((filial) => (
-              <div key={filial.id} className="bg-blue-50 border border-blue-200 rounded-lg p-4 shadow-md">
-                <h3 className="text-xl font-semibold text-blue-800 mb-4">{filial.nome_filial}</h3>
-                {equipamentosAtivos[filial.id]?.length > 0 ? (
-                  <ul className="space-y-3">
-                    {equipamentosAtivos[filial.id].map((equipamento) => (
-                      <li key={equipamento.id} className="bg-white p-3 rounded-md shadow-sm border border-gray-200">
-                        <p className="font-medium text-gray-800">Placa: <span className="font-normal">{equipamento.placa}</span></p>
-                        <p className="text-sm text-gray-600">Tipo: <span className="font-normal">{equipamento.tipo_equipamento}</span></p>
-                        <p className="text-xs text-gray-500">Desde: <span className="font-normal">{new Date(equipamento.data_inicio).toLocaleDateString('pt-BR')}</span></p>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="text-gray-600 text-sm">Nenhum equipamento ativo nesta filial.</p>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
+                if (data) {
+                    currentUser = data; // Armazena os dados do usuário logado na variável global
+                    return true; // Login bem-sucedido
+                }
+                return false; // Credenciais não correspondem a nenhum usuário
+            } catch (error) {
+                console.error('Erro no login:', error.message);
+                authError = error.message; // Armazena a mensagem de erro para exibição na UI
+                return false; // Login falhou
+            } finally {
+                appLoading = false; // Finaliza o estado de carregamento
+                renderScreen(); // Re-renderiza a tela para refletir o resultado do login
+            }
+        }
 
-        <button
-          onClick={() => setScreen('mainMenu')}
-          className="mt-8 w-full px-6 py-3 bg-gray-500 text-white rounded-md hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition duration-300 ease-in-out font-semibold"
-        >
-          Voltar ao Menu
-        </button>
-      </div>
-    </div>
-  );
-};
+        /**
+         * Realiza o logout do usuário.
+         * Limpa os dados do usuário logado e redireciona para a tela de login.
+         */
+        function logoutUser() {
+            currentUser = null; // Limpa os dados do usuário
+            authError = null; // Limpa quaisquer erros de autenticação
+            navigateTo('login'); // Redireciona para a tela de login
+        }
 
-// --- Componente Principal da Aplicação (App) ---
-// Este é o componente raiz que orquestra a exibição das diferentes telas
-// e fornece o contexto de autenticação para toda a aplicação.
-export default function App() {
-  // 'screen' gerencia qual componente de tela está visível.
-  // Começa na tela de login por padrão.
-  const [screen, setScreen] = useState('login');
+        // --- Funções de Renderização de Cada Tela ---
 
-  // useEffect para carregar estilos e scripts externos (Tailwind CSS, Font Awesome, Google Fonts).
-  // Garante que eles sejam injetados no <head> do documento apenas uma vez.
-  useEffect(() => {
-    // Carrega a biblioteca Font Awesome para ícones.
-    const linkFontAwesome = document.createElement('link');
-    linkFontAwesome.href = 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css';
-    linkFontAwesome.rel = 'stylesheet';
-    document.head.appendChild(linkFontAwesome);
+        /**
+         * Renderiza a tela de Login.
+         * Esta é a tela inicial onde o usuário insere suas credenciais.
+         */
+        function renderLoginScreen() {
+            // Se o aplicativo estiver em estado de carregamento inicial, mostra o spinner
+            if (appLoading) {
+                showLoadingSpinner('Verificando sessão...');
+                return;
+            }
 
-    // Carrega o framework CSS Tailwind CSS via CDN.
-    const scriptTailwind = document.createElement('script');
-    scriptTailwind.src = 'https://cdn.tailwindcss.com';
-    document.head.appendChild(scriptTailwind);
+            // Se já houver um usuário logado, navega diretamente para o menu principal
+            if (currentUser) {
+                navigateTo('mainMenu');
+                return;
+            }
 
-    // Injeta um estilo para definir a fonte 'Inter' como padrão para o corpo.
-    const styleInter = document.createElement('style');
-    styleInter.innerHTML = `
-      body {
-        font-family: 'Inter', sans-serif;
-      }
-    `;
-    document.head.appendChild(styleInter);
+            // Constrói o HTML para a tela de login
+            updateScreenContent(`
+                <h2 class="text-3xl font-bold text-center text-gray-800 mb-8">Login</h2>
+                <form id="loginForm" class="space-y-6">
+                    <div>
+                        <label for="email" class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                        <input
+                            type="email"
+                            id="email"
+                            class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 transition duration-200 ease-in-out"
+                            required
+                        />
+                    </div>
+                    <div>
+                        <label for="password" class="block text-sm font-medium text-gray-700 mb-1">Senha</label>
+                        <input
+                            type="password"
+                            id="password"
+                            class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 transition duration-200 ease-in-out"
+                            required
+                        />
+                    </div>
+                    ${authError ? showErrorMessage(authError) : ''} <!-- Exibe mensagem de erro se houver -->
+                    <button
+                        type="submit"
+                        id="loginButton"
+                        class="w-full bg-blue-600 text-white py-3 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition duration-300 ease-in-out font-semibold text-lg"
+                        ${appLoading ? 'disabled' : ''} <!-- Desabilita o botão se estiver carregando -->
+                    >
+                        ${appLoading ? 'Entrando...' : 'Entrar'}
+                    </button>
+                </form>
+            `);
 
-    // Carrega a fonte 'Inter' do Google Fonts para garantir que ela esteja disponível.
-    const fontLinkInter = document.createElement('link');
-    fontLinkInter.href = 'https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap';
-    fontLinkInter.rel = 'stylesheet';
-    document.head.appendChild(fontLinkInter);
+            // Adiciona o event listener ao formulário de login APÓS ele ser inserido no DOM
+            document.getElementById('loginForm').addEventListener('submit', async (e) => {
+                e.preventDefault(); // Previne o recarregamento padrão da página
+                const email = document.getElementById('email').value;
+                const password = document.getElementById('password').value;
+                const success = await loginUser(email, password); // Tenta fazer o login
+                if (success) {
+                    navigateTo('mainMenu'); // Se o login for bem-sucedido, navega para o menu principal
+                }
+            });
+        }
 
-  }, []); // O array vazio de dependências significa que este efeito é executado apenas na montagem.
+        /**
+         * Renderiza a tela do Menu Principal.
+         * Esta tela é exibida após o login bem-sucedido e oferece opções de navegação.
+         */
+        function renderMainMenu() {
+            // Redireciona para o login se não houver um usuário autenticado
+            if (!currentUser) {
+                navigateTo('login');
+                return;
+            }
 
-  // Usa o hook useAuth para acessar o estado de autenticação global.
-  const { user, loading } = useAuth();
+            // Constrói o HTML para o menu principal
+            updateScreenContent(`
+                <h2 class="text-3xl font-bold text-gray-800 mb-6">Bem-vindo, ${currentUser.nome || 'Usuário'}!</h2>
+                <p class="text-gray-600 mb-8">Selecione uma opção:</p>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- Botão para Cadastro de Filiais -->
+                    <button id="btnCadastroFiliais" class="flex flex-col items-center justify-center p-6 bg-blue-500 text-white rounded-lg shadow-md hover:bg-blue-600 transform hover:scale-105 transition duration-300 ease-in-out text-lg font-semibold">
+                        <i class="fas fa-building text-3xl mb-2"></i>
+                        Cadastro de Filiais
+                    </button>
+                    <!-- Botão para Cadastro de Equipamentos -->
+                    <button id="btnCadastroEquipamentos" class="flex flex-col items-center justify-center p-6 bg-blue-500 text-white rounded-lg shadow-md hover:bg-blue-600 transform hover:scale-105 transition duration-300 ease-in-out text-lg font-semibold">
+                        <i class="fas fa-truck-moving text-3xl mb-2"></i>
+                        Cadastro de Equipamentos
+                    </button>
+                    <!-- Botão para Troca de Filial Fixa -->
+                    <button id="btnTrocaFilialFixa" class="flex flex-col items-center justify-center p-6 bg-blue-500 text-white rounded-lg shadow-md hover:bg-blue-600 transform hover:scale-105 transition duration-300 ease-in-out text-lg font-semibold">
+                        <i class="fas fa-exchange-alt text-3xl mb-2"></i>
+                        Troca de Filial Fixa
+                    </button>
+                    <!-- Botão para Dashboard -->
+                    <button id="btnDashboard" class="flex flex-col items-center justify-center p-6 bg-blue-500 text-white rounded-lg shadow-md hover:bg-blue-600 transform hover:scale-105 transition duration-300 ease-in-out text-lg font-semibold">
+                        <i class="fas fa-chart-bar text-3xl mb-2"></i>
+                        Dashboard
+                    </button>
+                </div>
+                <!-- Botão para Sair da aplicação -->
+                <button id="btnLogout" class="mt-10 px-6 py-3 bg-red-600 text-white rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 transition duration-300 ease-in-out font-semibold">
+                    Sair
+                </button>
+            `, 'max-w-2xl'); // Define uma largura máxima maior para o menu principal
 
-  /**
-   * Função auxiliar para renderizar o componente de tela correto
-   * com base no estado 'screen' e no status de autenticação.
-   */
-  const renderCurrentScreen = () => {
-    // Exibe um spinner de carregamento enquanto o AuthProvider está inicializando.
-    if (loading) {
-      return (
-        <div className="min-h-screen flex items-center justify-center bg-gray-100">
-          <LoadingSpinner message="Inicializando aplicação..." />
-        </div>
-      );
-    }
+            // Adiciona os event listeners para os botões do menu APÓS o HTML ser renderizado
+            document.getElementById('btnCadastroFiliais').addEventListener('click', () => navigateTo('cadastroFiliais'));
+            document.getElementById('btnCadastroEquipamentos').addEventListener('click', () => navigateTo('cadastroEquipamentos'));
+            document.getElementById('btnTrocaFilialFixa').addEventListener('click', () => navigateTo('trocaFilialFixa'));
+            document.getElementById('btnDashboard').addEventListener('click', () => navigateTo('dashboard'));
+            document.getElementById('btnLogout').addEventListener('click', logoutUser); // Chama a função de logout
+        }
 
-    // Lógica de proteção de rota: se o usuário não estiver logado e tentar acessar
-    // qualquer tela que não seja a de login, ele é redirecionado para o login.
-    if (!user && screen !== 'login') {
-      return <LoginScreen setScreen={setScreen} />;
-    }
+        /**
+         * Renderiza a tela de Cadastro de Filiais.
+         * Permite ao usuário cadastrar novas filiais e associá-las a um responsável.
+         */
+        async function renderCadastroFiliaisScreen() {
+            // Redireciona para o login se não houver um usuário autenticado
+            if (!currentUser) { navigateTo('login'); return; }
 
-    // Usa um switch para renderizar o componente de tela apropriado.
-    switch (screen) {
-      case 'login':
-        // Se o usuário já estiver logado, vai para o menu principal em vez de mostrar o login novamente.
-        return user ? <MainMenu setScreen={setScreen} /> : <LoginScreen setScreen={setScreen} />;
-      case 'mainMenu':
-        return <MainMenu setScreen={setScreen} />;
-      case 'cadastroFiliais':
-        return <CadastroFiliaisScreen setScreen={setScreen} />;
-      case 'cadastroEquipamentos':
-        return <CadastroEquipamentosScreen setScreen={setScreen} />;
-      case 'trocaFilialFixa':
-        return <TrocaFilialFixaScreen setScreen={setScreen} />;
-      case 'dashboard':
-        return <DashboardScreen setScreen={setScreen} />;
-      default:
-        // Caso um estado de tela inválido seja definido, retorna para o login.
-        return <LoginScreen setScreen={setScreen} />;
-    }
-  };
+            // Variáveis de estado locais para esta tela
+            let formMessage = ''; // Mensagem de feedback do formulário (sucesso/erro)
+            let formLoading = false; // Indica se o formulário está em processo de envio
+            let dataLoading = true; // Indica se os dados iniciais (lista de usuários) estão sendo carregados
+            let usuarios = []; // Lista de usuários para preencher o dropdown de responsáveis
 
-  return (
-    // O AuthProvider envolve toda a aplicação, tornando o contexto de autenticação
-    // disponível para todos os componentes filhos.
-    <AuthProvider>
-      {renderCurrentScreen()}
-    </AuthProvider>
-  );
-}
+            // Função interna para buscar a lista de usuários do Supabase
+            const fetchUsuarios = async () => {
+                try {
+                    const { data, error } = await supabase.from('usuarios').select('id, nome');
+                    if (error) throw error; // Lança o erro para ser capturado
+                    usuarios = data; // Armazena os usuários na variável local
+                } catch (error) {
+                    console.error('Erro ao buscar usuários:', error.message);
+                    formMessage = 'Erro ao carregar responsáveis: ' + error.message; // Define a mensagem de erro
+                } finally {
+                    dataLoading = false; // Finaliza o carregamento dos dados
+                    renderCadastroFiliaisScreen(); // Re-renderiza a tela para exibir o formulário com os dados carregados
+                }
+            };
+
+            // Renderiza o HTML da tela de Cadastro de Filiais.
+            // Se `dataLoading` for true, mostra um spinner de carregamento.
+            // Caso contrário, mostra o formulário.
+            updateScreenContent(`
+                <h2 class="text-3xl font-bold text-center text-gray-800 mb-8">Cadastro de Filiais</h2>
+                ${dataLoading ? `<div class="flex flex-col items-center justify-center p-4"><div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mb-2"></div><p class="text-gray-700">Carregando responsáveis...</p></div>` : `
+                <form id="cadastroFiliaisForm" class="space-y-6">
+                    <div>
+                        <label for="nomeFilial" class="block text-sm font-medium text-gray-700 mb-1">Nome da Filial</label>
+                        <input
+                            type="text"
+                            id="nomeFilial"
+                            class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 transition duration-200 ease-in-out"
+                            required
+                        />
+                    </div>
+                    <div>
+                        <label for="responsavel" class="block text-sm font-medium text-gray-700 mb-1">Responsável</label>
+                        <select
+                            id="responsavel"
+                            class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 transition duration-200 ease-in-out"
+                            required
+                            ${formLoading || usuarios.length === 0 ? 'disabled' : ''} <!-- Desabilita se estiver carregando ou sem usuários -->
+                        >
+                            <option value="">Selecione um responsável</option>
+                            ${usuarios.map(user => `<option value="${user.id}">${user.nome}</option>`).join('')}
+                        </select>
+                        ${usuarios.length === 0 && !dataLoading ? `<p class="text-red-500 text-xs mt-1">Nenhum responsável encontrado. Cadastre usuários primeiro.</p>` : ''}
+                    </div>
+                    <div id="formMessageContainer">${formMessage ? (formMessage.includes('sucesso') ? showSuccessMessage(formMessage) : showErrorMessage(formMessage)) : ''}</div>
+                    <button
+                        type="submit"
+                        id="submitFilialBtn"
+                        class="w-full bg-blue-600 text-white py-3 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition duration-300 ease-in-out font-semibold text-lg"
+                        ${formLoading || usuarios.length === 0 ? 'disabled' : ''} <!-- Desabilita o botão se estiver carregando ou sem responsáveis -->
+                    >
+                        ${formLoading ? 'Cadastrando...' : 'Cadastrar Filial'}
+                    </button>
+                </form>
+                `}
+                <button
+                    id="backToMenuBtn"
+                    class="mt-6 w-full px-6 py-3 bg-gray-500 text-white rounded-md hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition duration-300 ease-in-out font-semibold"
+                >
+                    Voltar ao Menu
+                </button>
+            `);
+
+            // Adiciona event listeners APÓS o HTML ser renderizado.
+            // Isso garante que os elementos HTML existam antes de tentar acessá-los.
+            if (!dataLoading) { // Só adiciona listeners se os dados já foram carregados
+                document.getElementById('cadastroFiliaisForm').addEventListener('submit', async (e) => {
+                    e.preventDefault(); // Previne o recarregamento da página
+                    formLoading = true; // Atualiza o estado de carregamento do formulário
+                    formMessage = ''; // Limpa mensagens anteriores
+                    // Atualiza o texto e estado do botão de envio
+                    document.getElementById('submitFilialBtn').disabled = true;
+                    document.getElementById('submitFilialBtn').innerHTML = 'Cadastrando...';
+                    document.getElementById('formMessageContainer').innerHTML = ''; // Limpa a área de mensagens
+
+                    const nomeFilial = document.getElementById('nomeFilial').value;
+                    const responsavelId = document.getElementById('responsavel').value;
+
+                    try {
+                        const { error } = await supabase
+                            .from('filiais')
+                            .insert([{ nome_filial: nomeFilial, responsavel_id: responsavelId }]);
+
+                        if (error) throw error; // Lança o erro para o bloco catch
+
+                        formMessage = 'Filial cadastrada com sucesso!'; // Mensagem de sucesso
+                        // Limpa os campos do formulário
+                        document.getElementById('nomeFilial').value = '';
+                        document.getElementById('responsavel').value = '';
+                    } catch (error) {
+                        console.error('Erro ao cadastrar filial:', error.message);
+                        formMessage = 'Erro ao cadastrar filial: ' + error.message; // Mensagem de erro
+                    } finally {
+                        formLoading = false; // Finaliza o carregamento do formulário
+                        // Restaura o estado do botão de envio e exibe a mensagem de feedback
+                        document.getElementById('submitFilialBtn').disabled = false;
+                        document.getElementById('submitFilialBtn').innerHTML = 'Cadastrar Filial';
+                        document.getElementById('formMessageContainer').innerHTML = formMessage.includes('sucesso') ? showSuccessMessage(formMessage) : showErrorMessage(formMessage);
+                    }
+                });
+            }
+            document.getElementById('backToMenuBtn').addEventListener('click', () => navigateTo('mainMenu'));
+
+            // Inicia a busca por usuários quando a tela é carregada pela primeira vez
+            if (dataLoading) {
+                fetchUsuarios();
+            }
+        }
+
+        /**
+         * Renderiza a tela de Cadastro de Equipamentos.
+         * Permite ao usuário cadastrar novos equipamentos (placa e tipo).
+         */
+        async function renderCadastroEquipamentosScreen() {
+            // Redireciona para o login se não houver um usuário autenticado
+            if (!currentUser) { navigateTo('login'); return; }
+
+            // Variáveis de estado locais para esta tela
+            let formMessage = ''; // Mensagem de feedback do formulário
+            let formLoading = false; // Indica se o formulário está em processo de envio
+            // Lista de tipos de equipamento permitidos para validação e preenchimento do dropdown
+            const tiposPermitidos = ['Bomba Lança', 'Bomba Estacionária', 'Betoneira'];
+
+            // Constrói o HTML para a tela de Cadastro de Equipamentos
+            updateScreenContent(`
+                <h2 class="text-3xl font-bold text-center text-gray-800 mb-8">Cadastro de Equipamentos</h2>
+                <form id="cadastroEquipamentosForm" class="space-y-6">
+                    <div>
+                        <label for="placa" class="block text-sm font-medium text-gray-700 mb-1">Número da Placa</label>
+                        <input
+                            type="text"
+                            id="placa"
+                            class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 transition duration-200 ease-in-out"
+                            required
+                        />
+                    </div>
+                    <div>
+                        <label for="tipoEquipamento" class="block text-sm font-medium text-gray-700 mb-1">Tipo de Equipamento</label>
+                        <select
+                            id="tipoEquipamento"
+                            class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 transition duration-200 ease-in-out"
+                            required
+                            ${formLoading ? 'disabled' : ''} <!-- Desabilita o select durante o envio -->
+                        >
+                            <option value="">Selecione o tipo</option>
+                            ${tiposPermitidos.map(tipo => `<option value="${tipo}">${tipo}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div id="formMessageContainer">${formMessage ? (formMessage.includes('sucesso') ? showSuccessMessage(formMessage) : showErrorMessage(formMessage)) : ''}</div>
+                    <button
+                        type="submit"
+                        id="submitEquipamentoBtn"
+                        class="w-full bg-blue-600 text-white py-3 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition duration-300 ease-in-out font-semibold text-lg"
+                        ${formLoading ? 'disabled' : ''} <!-- Desabilita o botão durante o envio -->
+                    >
+                        ${formLoading ? 'Cadastrando...' : 'Cadastrar Equipamento'}
+                    </button>
+                </form>
+                <button
+                    id="backToMenuBtn"
+                    class="mt-6 w-full px-6 py-3 bg-gray-500 text-white rounded-md hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition duration-300 ease-in-out font-semibold"
+                >
+                    Voltar ao Menu
+                </button>
+            `);
+
+            // Adiciona o event listener ao formulário APÓS o HTML ser renderizado
+            document.getElementById('cadastroEquipamentosForm').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                formLoading = true;
+                formMessage = '';
+                document.getElementById('submitEquipamentoBtn').disabled = true;
+                document.getElementById('submitEquipamentoBtn').innerHTML = 'Cadastrando...';
+                document.getElementById('formMessageContainer').innerHTML = '';
+
+                const placa = document.getElementById('placa').value;
+                const tipoEquipamento = document.getElementById('tipoEquipamento').value;
+
+                // Validação para garantir que o tipo de equipamento selecionado é válido
+                if (!tiposPermitidos.includes(tipoEquipamento)) {
+                    formMessage = 'Tipo de equipamento inválido. Selecione um dos tipos permitidos.';
+                    formLoading = false;
+                    document.getElementById('submitEquipamentoBtn').disabled = false;
+                    document.getElementById('submitEquipamentoBtn').innerHTML = 'Cadastrar Equipamento';
+                    document.getElementById('formMessageContainer').innerHTML = showErrorMessage(formMessage);
+                    return; // Interrompe a função se a validação falhar
+                }
+
+                try {
+                    const { error } = await supabase
+                        .from('equipamentos')
+                        .insert([{ placa: placa, tipo_equipamento: tipoEquipamento }]);
+
+                    if (error) throw error;
+
+                    formMessage = 'Equipamento cadastrado com sucesso!';
+                    document.getElementById('placa').value = ''; // Limpa o campo da placa
+                    document.getElementById('tipoEquipamento').value = ''; // Limpa a seleção do tipo
+                } catch (error) {
+                    console.error('Erro ao cadastrar equipamento:', error.message);
+                    formMessage = 'Erro ao cadastrar equipamento: ' + error.message;
+                } finally {
+                    formLoading = false;
+                    document.getElementById('submitEquipamentoBtn').disabled = false;
+                    document.getElementById('submitEquipamentoBtn').innerHTML = 'Cadastrar Equipamento';
+                    document.getElementById('formMessageContainer').innerHTML = formMessage.includes('sucesso') ? showSuccessMessage(formMessage) : showErrorMessage(formMessage);
+                }
+            });
+            document.getElementById('backToMenuBtn').addEventListener('click', () => navigateTo('mainMenu'));
+        }
+
+        /**
+         * Renderiza a tela de Troca de Filial Fixa.
+         * Permite ao usuário registrar a movimentação de um equipamento entre filiais.
+         */
+        async function renderTrocaFilialFixaScreen() {
+            // Redireciona para o login se não houver um usuário autenticado
+            if (!currentUser) { navigateTo('login'); return; }
+
+            // Variáveis de estado locais para esta tela
+            let formMessage = '';
+            let formLoading = false;
+            let dataLoading = true; // Indica se os dados iniciais (equipamentos e filiais) estão carregando
+            let equipamentos = []; // Lista de equipamentos para o dropdown
+            let filiais = []; // Lista de filiais para o dropdown
+
+            // Função interna para buscar equipamentos e filiais do Supabase
+            const fetchData = async () => {
+                try {
+                    const { data: eqData, error: eqError } = await supabase.from('equipamentos').select('id, placa');
+                    const { data: filData, error: filError } = await supabase.from('filiais').select('id, nome_filial');
+
+                    if (eqError) throw eqError;
+                    equipamentos = eqData; // Armazena os equipamentos
+
+                    if (filError) throw filError;
+                    filiais = filData; // Armazena as filiais
+                } catch (error) {
+                    console.error('Erro ao buscar dados:', error.message);
+                    formMessage = 'Erro ao carregar equipamentos ou filiais: ' + error.message;
+                } finally {
+                    dataLoading = false; // Finaliza o carregamento dos dados
+                    renderTrocaFilialFixaScreen(); // Re-renderiza a tela para exibir o formulário com os dados carregados
+                }
+            };
+
+            // Renderiza o HTML da tela de Troca de Filial Fixa.
+            // Se `dataLoading` for true, mostra um spinner. Caso contrário, mostra o formulário.
+            updateScreenContent(`
+                <h2 class="text-3xl font-bold text-center text-gray-800 mb-8">Troca de Filial Fixa</h2>
+                ${dataLoading ? `<div class="flex flex-col items-center justify-center p-4"><div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mb-2"></div><p class="text-gray-700">Carregando dados...</p></div>` : `
+                <form id="trocaFilialFixaForm" class="space-y-6">
+                    <div>
+                        <label for="equipamento" class="block text-sm font-medium text-gray-700 mb-1">Selecionar Equipamento</label>
+                        <select
+                            id="equipamento"
+                            class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 transition duration-200 ease-in-out"
+                            required
+                            ${formLoading || equipamentos.length === 0 ? 'disabled' : ''} <!-- Desabilita se estiver carregando ou sem equipamentos -->
+                        >
+                            <option value="">Selecione uma placa</option>
+                            ${equipamentos.map(eq => `<option value="${eq.id}">${eq.placa}</option>`).join('')}
+                        </select>
+                        ${equipamentos.length === 0 && !dataLoading ? `<p class="text-red-500 text-xs mt-1">Nenhum equipamento encontrado. Cadastre equipamentos primeiro.</p>` : ''}
+                    </div>
+                    <div>
+                        <label for="novaFilial" class="block text-sm font-medium text-gray-700 mb-1">Nova Filial Fixa</label>
+                        <select
+                            id="novaFilial"
+                            class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 transition duration-200 ease-in-out"
+                            required
+                            ${formLoading || filiais.length === 0 ? 'disabled' : ''} <!-- Desabilita se estiver carregando ou sem filiais -->
+                        >
+                            <option value="">Selecione a nova filial</option>
+                            ${filiais.map(filial => `<option value="${filial.id}">${filial.nome_filial}</option>`).join('')}
+                        </select>
+                        ${filiais.length === 0 && !dataLoading ? `<p class="text-red-500 text-xs mt-1">Nenhuma filial encontrada. Cadastre filiais primeiro.</p>` : ''}
+                    </div>
+                    <div>
+                        <label for="dataExecucao" class="block text-sm font-medium text-gray-700 mb-1">Data de Execução</label>
+                        <input
+                            type="date"
+                            id="dataExecucao"
+                            class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 transition duration-200 ease-in-out"
+                            required
+                            ${formLoading ? 'disabled' : ''}
+                        />
+                    </div>
+                    <div id="formMessageContainer">${formMessage ? (formMessage.includes('sucesso') ? showSuccessMessage(formMessage) : showErrorMessage(formMessage)) : ''}</div>
+                    <button
+                        type="submit"
+                        id="submitTrocaBtn"
+                        class="w-full bg-blue-600 text-white py-3 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition duration-300 ease-in-out font-semibold text-lg"
+                        ${formLoading || equipamentos.length === 0 || filiais.length === 0 ? 'disabled' : ''} <!-- Desabilita se estiver carregando ou sem dados para seleção -->
+                    >
+                        ${formLoading ? 'Registrando...' : 'Registrar Troca'}
+                    </button>
+                </form>
+                `}
+                <button
+                    id="backToMenuBtn"
+                    class="mt-6 w-full px-6 py-3 bg-gray-500 text-white rounded-md hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition duration-300 ease-in-out font-semibold"
+                >
+                    Voltar ao Menu
+                </button>
+            `);
+
+            // Adiciona event listeners APÓS o HTML ser renderizado
+            if (!dataLoading) {
+                document.getElementById('trocaFilialFixaForm').addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    formLoading = true;
+                    formMessage = '';
+                    document.getElementById('submitTrocaBtn').disabled = true;
+                    document.getElementById('submitTrocaBtn').innerHTML = 'Registrando...';
+                    document.getElementById('formMessageContainer').innerHTML = '';
+
+                    const equipamentoId = document.getElementById('equipamento').value;
+                    const novaFilialId = document.getElementById('novaFilial').value;
+                    const dataExecucao = document.getElementById('dataExecucao').value;
+
+                    try {
+                        // Passo 1: Encontrar o registro de histórico ATUAL do equipamento (onde data_fim é NULL).
+                        const { data: currentHistory, error: currentHistoryError } = await supabase
+                            .from('historico_filiais_equipamentos')
+                            .select('*')
+                            .eq('equipamento_id', equipamentoId)
+                            .is('data_fim', null) // Busca o registro ativo (sem data de fim)
+                            .single(); // Espera apenas um resultado
+
+                        if (currentHistoryError && currentHistoryError.code !== 'PGRST116') {
+                            // PGRST116 significa "nenhuma linha encontrada", o que é esperado se não houver histórico.
+                            // Outros erros são tratados.
+                            throw new Error('Erro ao buscar histórico atual: ' + currentHistoryError.message);
+                        }
+
+                        // Passo 2: Se um histórico ATUAL for encontrado, encerrá-lo (definir data_fim).
+                        if (currentHistory) {
+                            const dataFimAntiga = new Date(dataExecucao);
+                            // Define a data de fim como o dia anterior à data de execução da nova filial.
+                            dataFimAntiga.setDate(dataFimAntiga.getDate() - 1);
+
+                            const { error: updateError } = await supabase
+                                .from('historico_filiais_equipamentos')
+                                .update({ data_fim: dataFimAntiga.toISOString().split('T')[0] }) // Formata para 'YYYY-MM-DD'
+                                .eq('id', currentHistory.id); // Atualiza o registro específico
+
+                            if (updateError) {
+                                throw new Error('Erro ao encerrar filial antiga: ' + updateError.message);
+                            }
+                        }
+
+                        // Passo 3: Inserir o NOVO registro de histórico para a nova filial.
+                        const { error: insertError } = await supabase
+                            .from('historico_filiais_equipamentos')
+                            .insert([
+                                {
+                                    equipamento_id: equipamentoId,
+                                    filial_id: novaFilialId,
+                                    data_inicio: dataExecucao,
+                                    data_fim: null, // A nova filial é a atual, então data_fim é NULL
+                                },
+                            ]);
+
+                        if (insertError) {
+                            throw new Error('Erro ao registrar nova filial: ' + insertError.message);
+                        }
+
+                        formMessage = 'Troca de filial registrada com sucesso!';
+                        // Limpa os campos do formulário
+                        document.getElementById('equipamento').value = '';
+                        document.getElementById('novaFilial').value = '';
+                        document.getElementById('dataExecucao').value = '';
+                    } catch (error) {
+                        console.error('Erro na troca de filial:', error.message);
+                        formMessage = 'Erro na troca de filial: ' + error.message;
+                    } finally {
+                        formLoading = false;
+                        document.getElementById('submitTrocaBtn').disabled = false;
+                        document.getElementById('submitTrocaBtn').innerHTML = 'Registrar Troca';
+                        document.getElementById('formMessageContainer').innerHTML = formMessage.includes('sucesso') ? showSuccessMessage(formMessage) : showErrorMessage(formMessage);
+                    }
+                });
+            }
+            document.getElementById('backToMenuBtn').addEventListener('click', () => navigateTo('mainMenu'));
+
+            // Inicia a busca pelos dados quando a tela é carregada
+            if (dataLoading) {
+                fetchData();
+            }
+        }
+
+        /**
+         * Renderiza a tela do Dashboard.
+         * Exibe as filiais e os equipamentos ativos associados a um responsável selecionado.
+         */
+        async function renderDashboardScreen() {
+            // Redireciona para o login se não houver um usuário autenticado
+            if (!currentUser) { navigateTo('login'); return; }
+
+            // Variáveis de estado locais para esta tela
+            let message = ''; // Mensagem de feedback (ex: erro ao carregar)
+            let loading = false; // Indica se os dados do dashboard estão sendo carregados
+            let dataLoading = true; // Indica se a lista inicial de usuários está carregando
+            let usuarios = []; // Lista de usuários para o filtro de responsável
+            let filiaisDoResponsavel = []; // Filiais gerenciadas pelo responsável selecionado
+            let equipamentosAtivos = {}; // Objeto para armazenar equipamentos ativos por ID da filial
+
+            // Função interna para buscar a lista de usuários para o filtro
+            const fetchUsuarios = async () => {
+                try {
+                    const { data, error } = await supabase.from('usuarios').select('id, nome');
+                    if (error) throw error;
+                    usuarios = data; // Armazena os usuários
+                } catch (error) {
+                    console.error('Erro ao buscar usuários:', error.message);
+                    message = 'Erro ao carregar responsáveis: ' + error.message;
+                } finally {
+                    dataLoading = false; // Finaliza o carregamento inicial de usuários
+                    renderDashboardScreen(); // Re-renderiza para exibir o select de usuários
+                }
+            };
+
+            // Função interna para buscar os dados completos do dashboard com base no responsável
+            const fetchDashboardData = async (responsavelId) => {
+                // Limpa os dados se nenhum responsável for selecionado no filtro
+                if (!responsavelId) {
+                    filiaisDoResponsavel = [];
+                    equipamentosAtivos = {};
+                    loading = false;
+                    renderDashboardScreen(); // Re-renderiza para limpar o dashboard
+                    return;
+                }
+
+                loading = true; // Inicia o carregamento dos dados do dashboard
+                message = ''; // Limpa mensagens anteriores
+                filiaisDoResponsavel = []; // Limpa filiais anteriores
+                equipamentosAtivos = {}; // Limpa equipamentos anteriores
+                renderDashboardScreen(); // Atualiza a UI para mostrar o spinner de carregamento
+
+                try {
+                    // 1. Buscar filiais associadas ao responsável selecionado
+                    const { data: filiaisData, error: filiaisError } = await supabase
+                        .from('filiais')
+                        .select('id, nome_filial')
+                        .eq('responsavel_id', responsavelId); // Filtra as filiais pelo ID do responsável
+
+                    if (filiaisError) throw filiaisError;
+                    filiaisDoResponsavel = filiaisData; // Armazena as filiais encontradas
+
+                    // 2. Para cada filial encontrada, buscar os equipamentos ativos associados.
+                    for (const filial of filiaisData) {
+                        const { data: historicoData, error: historicoError } = await supabase
+                            .from('historico_filiais_equipamentos')
+                            .select(`
+                                *,
+                                equipamentos (placa, tipo_equipamento) // Faz um JOIN implícito para obter dados do equipamento
+                            `)
+                            .eq('filial_id', filial.id)
+                            .is('data_fim', null); // Condição para equipamentos que estão atualmente ativos (data_fim é NULL)
+
+                        if (historicoError) {
+                            console.error(`Erro ao buscar equipamentos para filial ${filial.nome_filial}:`, historicoError.message);
+                            equipamentosAtivos[filial.id] = []; // Em caso de erro, define como array vazio
+                            continue;
+                        }
+
+                        // Mapeia os dados do histórico para um formato mais fácil de renderizar,
+                        // garantindo que as propriedades de 'equipamentos' existam (usando 'N/A' como fallback).
+                        const activeEquipments = historicoData.map(item => ({
+                            id: item.equipamento_id,
+                            placa: item.equipamentos?.placa || 'N/A',
+                            tipo_equipamento: item.equipamentos?.tipo_equipamento || 'N/A',
+                            data_inicio: item.data_inicio,
+                        }));
+                        equipamentosAtivos[filial.id] = activeEquipments; // Armazena os equipamentos por filial
+                    }
+                } catch (error) {
+                    console.error('Erro no dashboard:', error.message);
+                    message = 'Erro ao carregar dados do dashboard: ' + error.message;
+                } finally {
+                    loading = false; // Finaliza o carregamento dos dados do dashboard
+                    renderDashboardScreen(); // Re-renderiza com os dados ou a mensagem de erro
+                }
+            };
+
+            // Constrói o HTML da tela do Dashboard
+            updateScreenContent(`
+                <h2 class="text-3xl font-bold text-center text-gray-800 mb-8">Dashboard de Equipamentos</h2>
+                <div class="mb-6">
+                    <label for="responsavelSelect" class="block text-sm font-medium text-gray-700 mb-1">Filtrar por Responsável</label>
+                    <select
+                        id="responsavelSelect"
+                        class="w-full px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500 transition duration-200 ease-in-out"
+                        ${loading || dataLoading || usuarios.length === 0 ? 'disabled' : ''} <!-- Desabilita se estiver carregando ou sem usuários -->
+                    >
+                        <option value="">Selecione um responsável</option>
+                        ${usuarios.map(user => `<option value="${user.id}" ${user.id === (document.getElementById('responsavelSelect') ? document.getElementById('responsavelSelect').value : '') ? 'selected' : ''}>${user.nome}</option>`).join('')}
+                    </select>
+                    ${usuarios.length === 0 && !dataLoading ? `<p class="text-red-500 text-xs mt-1">Nenhum responsável encontrado. Cadastre usuários primeiro.</p>` : ''}
+                </div>
+
+                ${message ? showErrorMessage(message) : ''} <!-- Exibe mensagem de erro se houver -->
+                ${loading ? `<div class="text-center text-gray-600"><div class="flex flex-col items-center justify-center p-4"><div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mb-2"></div><p class="text-gray-700">Carregando dados...</p></div></div>` : ''}
+
+                ${!loading && (document.getElementById('responsavelSelect') ? document.getElementById('responsavelSelect').value : '') && filiaisDoResponsavel.length === 0 ? `<p class="text-center text-gray-600">Nenhuma filial encontrada para este responsável.</p>` : ''}
+
+                ${!loading && (document.getElementById('responsavelSelect') ? document.getElementById('responsavelSelect').value : '') && filiaisDoResponsavel.length > 0 ? `
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        ${filiaisDoResponsavel.map(filial => `
+                            <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 shadow-md">
+                                <h3 class="text-xl font-semibold text-blue-800 mb-4">${filial.nome_filial}</h3>
+                                ${equipamentosAtivos[filial.id]?.length > 0 ? `
+                                    <ul class="space-y-3">
+                                        ${equipamentosAtivos[filial.id].map(equipamento => `
+                                            <li class="bg-white p-3 rounded-md shadow-sm border border-gray-200">
+                                                <p class="font-medium text-gray-800">Placa: <span class="font-normal">${equipamento.placa}</span></p>
+                                                <p class="text-sm text-gray-600">Tipo: <span class="font-normal">${equipamento.tipo_equipamento}</span></p>
+                                                <p class="text-xs text-gray-500">Desde: <span class="font-normal">${new Date(equipamento.data_inicio).toLocaleDateString('pt-BR')}</span></p>
+                                            </li>
+                                        `).join('')}
+                                    </ul>
+                                ` : `<p class="text-gray-600 text-sm">Nenhum equipamento ativo nesta filial.</p>`}
+                            </div>
+                        `).join('')}
+                    </div>
+                ` : ''}
+
+                <button
+                    id="backToMenuBtn"
+                    class="mt-8 w-full px-6 py-3 bg-gray-500 text-white rounded-md hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition duration-300 ease-in-out font-semibold"
+                >
+                    Voltar ao Menu
+                </button>
+            `, 'max-w-4xl'); // Define uma largura máxima maior para o dashboard
+
+            // Adiciona event listeners APÓS o HTML ser renderizado
+            if (!dataLoading) {
+                const responsavelSelect = document.getElementById('responsavelSelect');
+                if (responsavelSelect) {
+                    responsavelSelect.addEventListener('change', (e) => {
+                        fetchDashboardData(e.target.value); // Chama a função para buscar dados do dashboard com o novo responsável
+                    });
+                }
+            }
+            document.getElementById('backToMenuBtn').addEventListener('click', () => navigateTo('mainMenu'));
+
+            // Inicia a busca pelos usuários quando a tela é carregada
+            if (dataLoading) {
+                fetchUsuarios();
+            } else if (document.getElementById('responsavelSelect') && document.getElementById('responsavelSelect').value) {
+                // Se já houver um responsável selecionado (ex: ao voltar para a tela), busca os dados do dashboard
+                fetchDashboardData(document.getElementById('responsavelSelect').value);
+            }
+        }
+
+
+        /**
+         * Função principal que orquestra a renderização da tela correta.
+         * É chamada sempre que o estado `currentScreen` ou `appLoading` muda.
+         */
+        function renderScreen() {
+            // Se o aplicativo estiver em estado de carregamento inicial, exibe o spinner
+            if (appLoading) {
+                showLoadingSpinner('Inicializando aplicação...');
+                return;
+            }
+
+            // Lógica de proteção de rota: se o usuário não estiver logado e tentar acessar
+            // qualquer tela que não seja a de login, ele é automaticamente redirecionado para o login.
+            if (!currentUser && currentScreen !== 'login') {
+                currentScreen = 'login'; // Força a tela atual para 'login'
+            }
+
+            // Usa uma estrutura switch-case para chamar a função de renderização da tela apropriada
+            switch (currentScreen) {
+                case 'login':
+                    renderLoginScreen();
+                    break;
+                case 'mainMenu':
+                    renderMainMenu();
+                    break;
+                case 'cadastroFiliais':
+                    renderCadastroFiliaisScreen();
+                    break;
+                case 'cadastroEquipamentos':
+                    renderCadastroEquipamentosScreen();
+                    break;
+                case 'trocaFilialFixa':
+                    renderTrocaFilialFixaScreen();
+                    break;
+                case 'dashboard':
+                    renderDashboardScreen();
+                    break;
+                default:
+                    renderLoginScreen(); // Por padrão, volta para a tela de login se a tela for desconhecida
+            }
+        }
+
+        // --- Inicialização do Aplicativo ---
+        // Garante que o DOM (Document Object Model) esteja completamente carregado
+        // antes de tentar iniciar o aplicativo. Isso evita erros de elementos não encontrados.
+        document.addEventListener('DOMContentLoaded', () => {
+            appLoading = false; // Define o carregamento inicial como falso
+            renderScreen(); // Inicia a renderização da primeira tela (login)
+        });
+    </script>
+</body>
+</html>
